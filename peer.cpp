@@ -85,7 +85,7 @@ void receiveMessages(int sockfd, std::vector<std::string>& hosts, std::string& o
             sendMessage(sockfd, hostname, ACK_MESSAGE);
 
         if (numReceived == hosts.size() - 1 && !ready.load()) {
-            std::cerr << "Ready" << std::endl;
+            std::cerr << "READY" << std::endl;
             ready.store(true);
         }
     }
