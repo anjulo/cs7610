@@ -15,8 +15,9 @@
 const int PORT = 8888;
 const char* ALIVE_MESSAGE = "ALIVE?";
 const char* ACK_MESSAGE = "ACK!";
+const int INITIAL_DELAY = 5; // seconds
+const int RETRY_DELAY = 2;
 const int MAX_RETRIES = 10;
-const int RETRY_DELAY = 2; // seconds
 
 std::atomic<bool> ready(false);
 
@@ -46,7 +47,7 @@ void sendMessage(int sockfd, const std::string& dst_host, const char* message) {
     memcpy(&dst_addr, res->ai_addr, res->ai_addrlen);
     freeaddrinfo(res);
 
-    std::cerr << "Sent " << message << " to " << dst_host << std::endl;
+    // std::cerr << "Sent " << message << " to " << dst_host << std::endl;
     sendto(sockfd, message, strlen(message), 0, (struct sockaddr *)&dst_addr, sizeof(dst_addr));
 }
 
@@ -71,7 +72,7 @@ void receiveMessages(int sockfd, std::vector<std::string>& hosts, std::string& o
         getnameinfo((struct sockaddr *)&src_addr, addrlen, hostname_, NI_MAXHOST, NULL, 0, 0);
         std::string hostname(hostname_);
 
-        std::cerr << "Received " << buffer << " from " << hostname << std::endl;
+        // std::cerr << "Received " << buffer << " from " << hostname << std::endl;
 
         auto it = std::find(hosts.begin(), hosts.end(), hostname.substr(0, hostname.find('.')));
         if (it != hosts.end() && !receivedFrom[it - hosts.begin()]) {
@@ -99,32 +100,46 @@ int main(int argc, char* argv[]) {
 
     std::vector<std::string> hosts = readHostfile(argv[2]);
 
-    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sockfd < 0) {
+
+    // networking
+    struct addrinfo hints, *res;
+    int sockfd, status;
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_flags = AI_PASSIVE;
+
+    if((status = getaddrinfo(NULL, std::to_string(PORT).c_str(), &hints, &res)) != 0){
+        std::cerr << "Error getting address info: " << gai_strerror(status) << std::endl;
+        return 1;
+    }
+
+    if((sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0){
         std::cerr << "Error creating socket\n";
+        freeaddrinfo(res);
         return 1;
     }
 
-    struct sockaddr_in myaddr;
-    memset(&myaddr, 0, sizeof(myaddr));
-    myaddr.sin_family = AF_INET;
-    myaddr.sin_addr.s_addr = INADDR_ANY;
-    myaddr.sin_port = htons(PORT);
-
-    if (bind(sockfd, (struct sockaddr *)&myaddr, sizeof(myaddr)) < 0) {
+    if(bind(sockfd, res->ai_addr, res->ai_addrlen) < 0){
         std::cerr << "Error binding socket\n";
+        close(sockfd);
+        freeaddrinfo(res);
         return 1;
-    }
+    }   
+
+    freeaddrinfo(res);
 
 
+    // get current program name
     char own_hostname_[256];
     gethostname(own_hostname_, sizeof(own_hostname_));
     std::string own_hostname(own_hostname_);
 
     std::thread receiveThread(receiveMessages, sockfd, std::ref(hosts), std::ref(own_hostname));
 
-    // initial delay to allow all programs to start
-    std::this_thread::sleep_for(std::chrono::seconds(5));
+    // initial delay to allow all programs to start and set-up listening thread
+    std::this_thread::sleep_for(std::chrono::seconds(INITIAL_DELAY));
 
     for (int retry = 0; retry < MAX_RETRIES && !ready.load(); retry++) {
         for (const auto& dst_host : hosts) {
@@ -136,6 +151,7 @@ int main(int argc, char* argv[]) {
     }
 
     receiveThread.join();
+
 
     close(sockfd);
     return 0;
