@@ -19,7 +19,8 @@
 
 struct PeerInfo {
     std::string hostname;
-    int sockfd;
+    int incoming_sockfd;
+    int outgoing_sockfd;
 };
 
 int own_id;
@@ -40,14 +41,16 @@ std::vector<std::string> readHostsfile(const std::string& filename) {
     return hosts;
 }
 
-void configureHosts(std::vector<std::string> hosts) {
+void configurePeers(std::vector<std::string> hosts) {
     char hostname[256];
     gethostname(hostname, sizeof(hostname));
 
     for (size_t i = 0; i < hosts.size(); i++) {
+        int id = i + 1;
         if (hosts[i] == hostname) {
-            own_id = i + 1;
-            break;
+            own_id = id;
+        } else {
+            peers[id] = {hosts[i], -1, -1};
         }
     }
 
@@ -57,8 +60,8 @@ void configureHosts(std::vector<std::string> hosts) {
     std::cout << "{proc_id: " << own_id << ", state: " << state << ", predecessor: " << predecessor_id << ", successor: " << successor_id << "}" << std::endl;
 }
 
-int initializeServer() {
-    // prepare socket for listening as a server
+int initializeListener() {
+    // prepare socket to listen to connection from servers
     int sockfd, rv, yes=1;
     struct addrinfo hints, *servinfo, *p;
     
@@ -138,7 +141,7 @@ int connectToPeer(const std::string& hostname, const char* port) {
         std::cerr << "Failed to connect to " << hostname << std::endl;
         return -1;
     }
-
+    
     freeaddrinfo(peerinfo);
     return peer_sockfd;
 }
@@ -147,9 +150,9 @@ void handleConnections(int server_sockfd) {
     while (true) {
         struct sockaddr_storage peeraddr;
         socklen_t peeraddr_len = sizeof(peeraddr);
-        int client_sockfd = accept(server_sockfd, (struct sockaddr*)&peeraddr, &peeraddr_len);
+        int new_sockfd = accept(server_sockfd, (struct sockaddr*)&peeraddr, &peeraddr_len);
         
-        if (client_sockfd < 0) {
+        if (new_sockfd < 0) {
             std::cerr << "Error accepting connection" << std::endl;
             continue;
         }
@@ -160,7 +163,7 @@ void handleConnections(int server_sockfd) {
         
         for (auto& pair : peers) {
             if (pair.second.hostname == hostname.substr(0, hostname.find('.'))) {
-                pair.second.sockfd = client_sockfd;
+                pair.second.incoming_sockfd = new_sockfd;
                 break;
             }
         }
@@ -175,8 +178,8 @@ void receiveToken() {
         
         for (const auto& pair : peers) {
             // if(pair.first != own_id) {
-                FD_SET(pair.second.sockfd, &readfds);
-                maxFd = std::max(maxFd, pair.second.sockfd);
+                FD_SET(pair.second.incoming_sockfd, &readfds);
+                maxFd = std::max(maxFd, pair.second.incoming_sockfd);
             // }
         }
         
@@ -192,9 +195,9 @@ void receiveToken() {
         }
         
         for (const auto& pair : peers) {
-            if (FD_ISSET(pair.second.sockfd, &readfds)) {
+            if (FD_ISSET(pair.second.incoming_sockfd, &readfds)) {
                 int recieved_token = 0;
-                int bytes_read = recv(pair.second.sockfd, &recieved_token, sizeof(int), 0);
+                int bytes_read = recv(pair.second.incoming_sockfd, &recieved_token, sizeof(int), 0);
                 if (bytes_read == sizeof(int) && recieved_token == TOKEN ) {
                     std::cout << "{proc_id: " << own_id 
                               << ", sender: " << pair.first 
@@ -217,7 +220,7 @@ void processToken(float t) {
             std::this_thread::sleep_for(std::chrono::duration<float>(t));
             
             std::cout << "{proc_id: " << own_id << ", sender: " << own_id << ", receiver: " << successor_id << ", message: " << TOKEN << "}" << std::endl;
-            send(peers[successor_id].sockfd, &TOKEN, sizeof(TOKEN), 0);
+            send(peers[successor_id].outgoing_sockfd, &TOKEN, sizeof(TOKEN), 0);
             
             has_token.store(false);
         }
@@ -248,31 +251,30 @@ int main(int argc, char* argv[]) {
 
     // Configure hosts and their ids
     std::vector<std::string> hosts = readHostsfile(hostsfile);
-    configureHosts(hosts);
+    configurePeers(hosts);
 
-    // prepare socket and listening for incoming connection requests
-    int sockfd = initializeServer();
+    // prepare socket and listen for incoming connection requests from peers with lower IDs
+    int sockfd = initializeListener();
     std::thread serverThread(handleConnections, sockfd);
-
 
 
     // Initial delay to allow all processes start
     std::this_thread::sleep_for(std::chrono::seconds(INITIAL_DELAY));
 
-    // Connect to all other peers as a client
+    // Connect to peers with higher IDs
     for (size_t i = 0; i < hosts.size(); i++) {
         int id = i + 1;
-        if (id != own_id) {
+        if (id != own_id){
             int peer_sockfd = connectToPeer(hosts[i], PORT);
             if (peer_sockfd != -1)
-                peers[id] = {hosts[i], peer_sockfd};
+                peers[id].outgoing_sockfd = peer_sockfd;
         }
         
     }
 
 
 
-    // recieve and handle token
+    // recieve and process token
     std::thread receiveThread(receiveToken);
     std::thread processThread(processToken, t);
 
