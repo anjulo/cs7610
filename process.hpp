@@ -3,17 +3,15 @@
 
 #include <iostream>
 #include <fstream>
-#include <vector>
 #include <string>
 #include <cstring>
 #include <unistd.h>
-#include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <thread>
 #include <chrono>
 #include <atomic>
-#include <algorithm>
+#include <vector>
 #include <map>
 #include <queue>
 

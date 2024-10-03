@@ -1,8 +1,12 @@
 #ifndef SNAPSHOT_HPP
 #define SNAPSHOT_HPP
 
+#include <iostream>
 #include <vector>
 #include <map>
+#include <thread>
+#include <algorithm>
+#include <chrono>
 
 const int MARKER = 2;
 struct Snapshot {
