@@ -38,7 +38,7 @@ void startSnapshot(int snapshot_id, int marker_sender_id) {
     }
 }
 
-void handleMarker(int sender_id, int snapshot_id, float marker_delay) {
+void handleMarker(int sender_id, int snapshot_id) {
     
     if(!current_snapshot.active){ // / first time receiving the marker
         std::this_thread::sleep_for(std::chrono::duration<float>(marker_delay));

@@ -4,7 +4,7 @@
 int main(int argc, char* argv[]) {
     // process cli arguments
     std::string hostsfile;
-    int snapshot_state = -1, snapshot_id;
+    int snapshot_id;
     for (int i = 1; i < argc; i += 2) {
         std::string arg(argv[i]);
         if (arg == "-h")

@@ -212,7 +212,7 @@ void receiveMessages() {
                             current_snapshot.channel_state[peer.first].push_back(TOKEN);
                         }
                     } else if(message[0] = MARKER){
-                        handleMarker(peer.first, message[1], marker_delay);
+                        handleMarker(peer.first, message[1]);
                     }
                 }
             }
