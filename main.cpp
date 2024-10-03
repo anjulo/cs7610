@@ -44,10 +44,6 @@ int main(int argc, char* argv[]) {
         
     }
 
-    std::cerr << "here" << std::endl;
-
-
-
     // recieve and process token
     std::thread receiveThread(receiveMessages);
     std::thread processThread(processToken, snapshot_id);
