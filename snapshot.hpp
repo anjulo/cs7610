@@ -9,6 +9,10 @@
 #include <chrono>
 
 const int MARKER = 2;
+
+extern float marker_delay;
+extern int snapshot_state;
+
 struct Snapshot {
     int id;
     bool active;

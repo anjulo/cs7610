@@ -25,6 +25,7 @@ extern int own_id;
 extern int predecessor_id;
 extern int successor_id;
 extern int state;
+extern float token_delay;
 extern std::atomic<bool> has_token;
 
 struct Peer {
@@ -40,7 +41,7 @@ void configurePeers(std::vector<std::string> hosts);
 int initializeListener();
 int connectToPeer(const std::string& hostname, const char* port);
 void handleConnections(int server_sockfd);
-void processToken(float token_delay, int snapshot_state, int snapshot_id);
-void receiveMessages(float marker_delay);
+void processToken(int snapshot_id);
+void receiveMessages();
 
 #endif

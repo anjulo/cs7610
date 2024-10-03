@@ -1,6 +1,8 @@
 #include "snapshot.hpp"
 #include "process.hpp"
 
+float marker_delay;
+int snapshot_state = -1;
 Snapshot current_snapshot = {-1, false};
 
 

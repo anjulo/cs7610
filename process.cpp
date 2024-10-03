@@ -9,6 +9,7 @@ int own_id;
 int predecessor_id;
 int successor_id;
 int state = 0;
+float token_delay;
 std::atomic<bool> has_token(false);
 
 std::map<int, Peer> peers;
@@ -153,7 +154,7 @@ void handleConnections(int server_sockfd) {
 }
 
 
-void processToken(float token_delay, int snapshot_state, int snapshot_id) {
+void processToken(int snapshot_id) {
     while (true) {
         if (has_token.load()) {
             state++;
@@ -174,7 +175,7 @@ void processToken(float token_delay, int snapshot_state, int snapshot_id) {
     }
 }
 
-void receiveMessages(float marker_delay) {
+void receiveMessages() {
     // beej's guid: ch. 7
     while (true) {
         fd_set readfds;
@@ -206,10 +207,10 @@ void receiveMessages(float marker_delay) {
                         std::cerr << "{proc_id: " << own_id << ", sender: " << peer.first 
                                   << ", receiver: " << own_id << ", message: \"token\"" <<  "}"
                                   << std::endl;
+                        has_token.store(true);
                         if(current_snapshot.active && current_snapshot.channel_recording[peer.first]){
                             current_snapshot.channel_state[peer.first].push_back(TOKEN);
                         }
-                        has_token.store(true);
                     } else if(message[0] = MARKER){
                         handleMarker(peer.first, message[1], marker_delay);
                     }

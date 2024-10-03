@@ -1,9 +1,9 @@
 #include "process.hpp"
+#include "snapshot.hpp"
 
 int main(int argc, char* argv[]) {
     // process cli arguments
     std::string hostsfile;
-    float token_delay, marker_delay;
     int snapshot_state = -1, snapshot_id;
     for (int i = 1; i < argc; i += 2) {
         std::string arg(argv[i]);
@@ -49,8 +49,8 @@ int main(int argc, char* argv[]) {
 
 
     // recieve and process token
-    std::thread receiveThread(receiveMessages, marker_delay);
-    std::thread processThread(processToken, token_delay, snapshot_state, snapshot_id);
+    std::thread receiveThread(receiveMessages);
+    std::thread processThread(processToken, snapshot_id);
 
     // join
     serverThread.join();
