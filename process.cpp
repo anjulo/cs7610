@@ -159,9 +159,10 @@ void processToken(int snapshot_id) {
         if (has_token.load()) {
             state++;
             std::cerr << "{proc_id: " << own_id << ", state: " << state << "}" << std::endl;
-
-            if(state == snapshot_state)
+            
+            if(state == snapshot_state) {
                 startSnapshot(snapshot_id);
+            }
             
             std::this_thread::sleep_for(std::chrono::duration<float>(token_delay));
             
@@ -171,7 +172,7 @@ void processToken(int snapshot_id) {
             
             has_token.store(false);
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 
@@ -208,9 +209,13 @@ void receiveMessages() {
                                   << ", receiver: " << own_id << ", message: \"token\"" <<  "}"
                                   << std::endl;
                         has_token.store(true);
-                        if(current_snapshot.active && current_snapshot.channel_recording[peer.first]){
-                            current_snapshot.channel_state[peer.first].push_back(TOKEN);
+
+                        for(auto& pair: snapshots) {
+                            if(pair.second.active && pair.second.channel_recording[peer.first]) {
+                                pair.second.channel_state[peer.first].push_back(TOKEN);
+                            }
                         }
+
                     } else if(message[0] = MARKER){
                         handleMarker(peer.first, message[1]);
                     }

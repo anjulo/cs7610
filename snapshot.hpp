@@ -22,7 +22,7 @@ struct Snapshot {
     std::map<int, std::vector<int>> channel_state;
 };
 
-extern Snapshot current_snapshot;
+extern std::map<int, Snapshot> snapshots;
 
 void startSnapshot(int snapshot_id, int marker_sender_id = -1);
 void handleMarker(int sender_id, int snapshot_id);
