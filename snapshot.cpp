@@ -63,7 +63,7 @@ void handleMarker(int sender_id, int snapshot_id) {
         auto isFalse = [](const auto& pair) { return !pair.second; };
         if (std::all_of(current_snapshot.channel_recording.begin(), current_snapshot.channel_recording.end(), isFalse)) {
             std::cerr << "{proc_id:" << own_id << ", snapshot_id: " << current_snapshot.id 
-                      << ", snapshot: \"finished\"}" << std::endl;
+                      << ", snapshot: \"complete\"}" << std::endl;
             current_snapshot.active = false;
         }
     }
