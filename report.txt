@@ -1,0 +1,14 @@
+The Passtoken application consists of 5 processes included in the hostsfile.txt. Each process begins with reading the hostsfile.txt,
+and assigning itself an id, identifying the successor and predecessor ids and initializes a map that has key as a process Id and value as a struct that stores other process name, incoing and outgoing sockets FDs from the processes. 
+It then prepare socket to listen to connection from other processes and creats a thread for handling connection from other processes, the new socket FDs are stored in the map explained above. After some intial delay to get every other process to setup the listner sockets and thread, 
+the process then sends connection requests to the other process and stores the outgoing channels' socket FDs as well.  The process then spins up two thread: one to recieve messages(token) and another to process the recived token. 
+
+The Chandy-Lamport snapshot is implmented within the threads above for processing token and recieving messages. 
+    1. (process token thread) When the state of a initator process is increased to s, the process immidiately records the local state,  sends the marker message to all the other processes, 
+and starts listening on the incoming channels recorded on the map described above. 
+    2. (recieve message thread) when a process recieves a marker message, if it's first time, it records local state, marks the channel the marker came on as empty, sends marker to all other process and starts recording on all incoming channels except for the one the marker came on. If 
+        it's not the first time, it closes the channel the message comes on and sets the state of that channel to all the messages recorded on it since we began recording. 
+        I used the select system call(Beej's Guide Chapter 7.3) to listen to all the incoming socket at the same time.
+
+The snapshot stops when all the incoming channels are closed.
+
