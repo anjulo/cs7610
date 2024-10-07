@@ -170,7 +170,6 @@ void processToken(int snapshot_id) {
             
             has_token.store(false);
         }
-        // std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 
