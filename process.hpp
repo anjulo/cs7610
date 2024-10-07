@@ -22,8 +22,8 @@
 const int TOKEN = 1;
 
 extern int own_id;
-extern int predecessor_id;
-extern int successor_id;
+extern int pre_id;
+extern int suc_id;
 extern int state;
 extern float token_delay;
 extern std::atomic<bool> has_token;

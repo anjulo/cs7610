@@ -19,7 +19,7 @@ struct Snapshot {
     int state;
     bool has_token;
     std::map<int, bool> channel_recording;
-    std::map<int, std::vector<int>> channel_state;
+    std::map<int, std::vector<std::string>> channel_state;
 };
 
 extern std::map<int, Snapshot> snapshots;

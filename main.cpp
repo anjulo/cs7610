@@ -24,6 +24,7 @@ int main(int argc, char* argv[]) {
     // Configure hosts and their ids
     std::vector<std::string> hosts = readHostsfile(hostsfile);
     configurePeers(hosts);
+    std::cerr << "{proc_id: " << own_id << ", state: " << state << ", predecessor: " << pre_id << ", successor: " << suc_id << "}" << std::endl;
 
     // prepare socket and listen for incoming connection requests from peers with lower IDs
     int sockfd = initializeListener();

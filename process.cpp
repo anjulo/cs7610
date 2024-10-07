@@ -6,8 +6,8 @@
 #define BACKLOG 5
 
 int own_id;
-int predecessor_id;
-int successor_id;
+int pre_id;
+int suc_id;
 int state = 0;
 float token_delay;
 std::atomic<bool> has_token(false);
@@ -37,10 +37,8 @@ void configurePeers(std::vector<std::string> hosts) {
         }
     }
 
-    predecessor_id = (own_id - 1 + hosts.size()) % hosts.size();
-    successor_id = own_id % hosts.size() + 1;
-
-    std::cerr << "{proc_id: " << own_id << ", state: " << state << ", predecessor: " << predecessor_id << ", successor: " << successor_id << "}" << std::endl;
+    pre_id = (own_id - 1 + hosts.size()) % hosts.size();
+    suc_id = own_id % hosts.size() + 1;
 }
 
 int initializeListener() {
@@ -166,9 +164,9 @@ void processToken(int snapshot_id) {
             
             std::this_thread::sleep_for(std::chrono::duration<float>(token_delay));
             
-            std::cerr << "{proc_id: " << own_id << ", sender: " << own_id << ", receiver: " << successor_id << ", message: \"token\"" << "}" << std::endl;
+            std::cerr << "{proc_id: " << own_id << ", sender: " << own_id << ", receiver: " << suc_id << ", message: \"token\"" << "}" << std::endl;
             int message[2] = {TOKEN, 0};
-            send(peers[successor_id].outgoing_sockfd, message, sizeof(message), 0);
+            send(peers[suc_id].outgoing_sockfd, message, sizeof(message), 0);
             
             has_token.store(false);
         }
@@ -212,7 +210,7 @@ void receiveMessages() {
 
                         for(auto& pair: snapshots) {
                             if(pair.second.active && pair.second.channel_recording[peer.first]) {
-                                pair.second.channel_state[peer.first].push_back(TOKEN);
+                                pair.second.channel_state[peer.first].push_back("token");
                             }
                         }
 
