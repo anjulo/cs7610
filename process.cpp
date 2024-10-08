@@ -37,7 +37,7 @@ void configurePeers(std::vector<std::string> hosts) {
         }
     }
 
-    pre_id = (own_id - 1 + hosts.size()) % hosts.size();
+    pre_id = ((own_id - 2 + hosts.size()) % hosts.size()) + 1;
     suc_id = own_id % hosts.size() + 1;
 }
 
