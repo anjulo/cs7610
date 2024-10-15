@@ -37,10 +37,6 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    for (const auto& peer: peers) { 
-        std::cout << peer.second.hostname << " ";
-    }
-
     // join
     connectionListnerThread.join();
 
