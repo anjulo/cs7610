@@ -31,7 +31,7 @@ extern std::map<int, Peer> peers;
 
 std::vector<std::string> readHostsfile(const std::string& filename);
 void configurePeers(std::vector<std::string> hosts);
-int initializeListener();
+int initializeConnectionListener();
 int connectToPeer(const std::string& hostname, const char* port);
 void handleIncomingConnections(int server_sockfd);
 

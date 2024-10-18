@@ -28,7 +28,7 @@ void configurePeers(std::vector<std::string> hosts) {
     }
 }
 
-int initializeListener() {
+int initializeConnectionListener() {
     // prepare socket to listen to connection from servers
     int sockfd, rv, yes=1;
     struct addrinfo hints, *servinfo, *p;
@@ -129,11 +129,56 @@ void handleIncomingConnections(int server_sockfd) {
         getnameinfo((struct sockaddr*)&peeraddr, peeraddr_len, hostname_, NI_MAXHOST, NULL, 0, NI_NOFQDN);
         std::string hostname(hostname_);
         
-        for (auto& pair : peers) {
-            if (pair.second.hostname == hostname.substr(0, hostname.find('.'))) {
-                pair.second.incoming_sockfd = new_sockfd;
+        for (auto& peer : peers) {
+            if (peer.second.hostname == hostname.substr(0, hostname.find('.'))) {
+                peer.second.incoming_sockfd = new_sockfd;
                 break;
             }
         }
     }
 }
+
+
+
+// void handleIncomingConnections(int server_sockfd) {
+//     fd_set readfds;
+//     int maxFd = server_sockfd;
+//     struct timeval tv;
+//     tv.tv_sec = 2;
+//     tv.tv_usec = 0;
+    
+//     while (true) {
+//         FD_ZERO(&readfds);
+//         FD_SET(server_sockfd, &readfds);
+
+//         int rv = select(maxFd + 1, &readfds, NULL, NULL, &tv);
+
+//         if (rv < 0) {
+//             std::cerr << "Select error" << std::endl;
+//             continue;
+//         }
+
+//         if (FD_ISSET(server_sockfd, &readfds)) {
+//             // New connection
+//             struct sockaddr_storage peeraddr;
+//             socklen_t peeraddr_len = sizeof(peeraddr);
+//             int new_sockfd = accept(server_sockfd, (struct sockaddr*)&peeraddr, &peeraddr_len);
+//             if (new_sockfd < 0) {
+//                 std::cerr << "Error accepting connection" << std::endl;
+//                 continue;
+//             }
+
+//             char hostname_[NI_MAXHOST];
+//             getnameinfo((struct sockaddr*)&peeraddr, peeraddr_len, hostname_, NI_MAXHOST, NULL, 0, NI_NOFQDN);
+//             std::string hostname(hostname_);
+
+//             for (auto& pair : peers) {
+//                 if (pair.second.hostname == hostname.substr(0, hostname.find('.'))) {
+//                     pair.second.incoming_sockfd = new_sockfd;
+//                     break;
+//                 }
+//             }
+            
+//         }
+//     }
+// }
