@@ -52,6 +52,20 @@ void printMessage(const Message& msg) {
     std::cerr << "}" << std::endl;
 }
 
+void printNewView() {
+    std::cerr << "{peer_id: " << own_id  << ", view_id: " << view_id
+              << ", leader: " << leader_id << ", memb_list: [";
+    
+    for (size_t i = 0; i < membership_list.size(); i++) {
+        std::cerr << membership_list[i];
+        if (i < membership_list.size() - 1) {
+            std::cerr << ", ";
+        }
+    }
+
+    std::cerr << "]}" << std::endl;
+}
+
 void sendMessage(int sockfd, const Message& msg, int dest_id) {
     std::vector<int> buffer;
 
@@ -118,6 +132,7 @@ void joinGroup() {
     if (own_id == leader_id) {
         view_id = 1;
         membership_list.push_back(own_id);
+        printNewView();
     } else {
         Message join_msg{Message::JOIN, -1, -1, own_id, own_id};
         sendMessage(peers[leader_id].outgoing_sockfd, join_msg, leader_id);
@@ -130,6 +145,7 @@ void handleJoinMessage(const Message& msg) {
     if (membership_list.size() == 1 && membership_list[0] == leader_id) {
         view_id++;
         membership_list.push_back(msg.sender_id);
+        printNewView();
         Message newview_msg{Message::NEWVIEW, request_id++, view_id, -1, -1, membership_list};
         sendMessage(peers[msg.sender_id].outgoing_sockfd, newview_msg, msg.sender_id);
         return;
@@ -167,8 +183,10 @@ void handleOkMessage(const Message& msg) {
         new_peer_id = op.peer_id;
 
         if (new_peer_id != -1) {
+            view_id++;
             membership_list.push_back(new_peer_id);
-            Message newview_msg{Message::NEWVIEW, -1, ++view_id, -1, -1, membership_list};
+            printNewView();
+            Message newview_msg{Message::NEWVIEW, -1, view_id, -1, -1, membership_list};
 
             for (int id : membership_list) {
                 if (id != own_id)
@@ -186,18 +204,7 @@ void handleOkMessage(const Message& msg) {
 void handleNewViewMessage(const Message& msg) {
     view_id = msg.view_id;
     membership_list = msg.membership_list;
-    
-    std::cerr << "{peer_id: " << own_id  << ", view_id: " << view_id
-              << ", leader: " << leader_id << ", memb_list: [";
-    
-    for (size_t i = 0; i < membership_list.size(); i++) {
-        std::cerr << membership_list[i];
-        if (i < membership_list.size() - 1) {
-            std::cerr << ", ";
-        }
-    }
-
-    std::cerr << "]}" << std::endl;
+    printNewView();
 
 }
 
