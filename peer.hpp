@@ -13,13 +13,15 @@
 #include <atomic>
 #include <vector>
 #include <map>
+#include <algorithm>
+#include <string>
+#include <errno.h>
 
 #define PORT "3490"
 #define INITIAL_DELAY 5 // seconds
 #define BACKLOG 5
 
 extern int own_id;
-extern int delay;
 
 struct Peer {
     std::string hostname;
@@ -28,11 +30,16 @@ struct Peer {
 };
 
 extern std::map<int, Peer> peers;
+extern std::vector<std::string> hosts;
 
-std::vector<std::string> readHostsfile(const std::string& filename);
+void readHostsfile(const std::string& filename);
 void configurePeers(std::vector<std::string> hosts);
-int initializeConnectionListener();
-int connectToPeer(const std::string& hostname, const char* port);
-void handleIncomingConnections(int server_sockfd);
+int setupSocketTCP();
+void handleConnectionsTCP(int server_sockfd);
+int connectToPeerTCP(const std::string& hostname);
+
+int setupSocketUDP();
+void receiveMessagesUDP(int sockfd);
+void sendMessageUDP(int sockfd, const std::string& dst_host, const char* message);
 
 #endif

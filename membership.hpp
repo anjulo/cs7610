@@ -4,12 +4,17 @@
 #include "peer.hpp"
 #include <vector>
 #include <map>
-#include <set>
+#include <unordered_map>
+#include <mutex>
+
+#define HEARTBEAT_MESSAGE "HEARTBEAT"
+#define HEARTBEAT_INTERVAL 5
+#define FAILURE_TIMEOUT 10.0
 
 enum Operation { ADD };
 
 struct Message {
-    enum Type { JOIN, REQ, OK, NEWVIEW } type;
+    enum Type { JOIN, REQ, OK, NEWVIEW, UNKNOWN } type;
     int request_id;
     int view_id;
     int peer_id;
@@ -32,8 +37,14 @@ extern std::vector<int> membership_list;
 extern std::map<std::pair<int, int>, int> oks_recieved;
 extern std::map<std::pair<int, int>, PendingOperation> pending_operations;
 
-Message receiveMessage(int sockfd);
-void processIncomingMessages();
+extern std::unordered_map<int, std::chrono::steady_clock::time_point> last_heartbeat;
+extern std::mutex heartbeat_mutex;
+
 void joinGroup();
+void processIncomingMessagesTCP();
+
+void sendHeartbeat(int udp_sockfd);
+void checkFailures();
+
 
 #endif

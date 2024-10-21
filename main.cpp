@@ -1,38 +1,36 @@
 #include "peer.hpp"
 #include "membership.hpp"
 
-int delay;
 int main(int argc, char* argv[]) {
     // process cli arguments
     std::string hostsfile;
-    int snapshot_id;
+    int d, c = 0;
     for (int i = 1; i < argc; i += 2) {
         std::string arg(argv[i]);
         if (arg == "-h")
-            hostsfile = argv[i + 1];
+            hostsfile = argv[i+1];
         else if (arg == "-d")
-            delay = std::stof(argv[i + 1]);
+            d = std::stoi(argv[i+1]);
+        else if (arg == "-c")
+            c = std::stoi(argv[i+1]);
     }
 
     // configure hosts and their ids
-    std::vector<std::string> hosts = readHostsfile(hostsfile);
+    readHostsfile(hostsfile);
     configurePeers(hosts);
-    std::cerr << "peer_id: " << own_id << std::endl;
 
-
-    // prepare socket and listen for incoming connection requests from peers with lower IDs
-    int sockfd = initializeConnectionListener();
-    std::thread connectionListnerThread(handleIncomingConnections, sockfd);
-
+    // prepare TCP socket and listen for incoming connection requests from peers
+    int tcp_sockfd = setupSocketTCP();
+    std::thread connectionListnerTCP(handleConnectionsTCP, tcp_sockfd);
 
     // initial delay to allow all processes start
     std::this_thread::sleep_for(std::chrono::seconds(INITIAL_DELAY));
 
-    // connect to other peers
+    // connect to other peers TCP
     for (size_t i = 0; i < hosts.size(); i++) {
         int id = i + 1;
         if (id != own_id){
-            int peer_sockfd = connectToPeer(hosts[i], PORT);
+            int peer_sockfd = connectToPeerTCP(hosts[i]);
             if (peer_sockfd != -1) {
                 peers[id].outgoing_sockfd = peer_sockfd;
             }
@@ -40,18 +38,36 @@ int main(int argc, char* argv[]) {
     }
 
 
-
     // membership protocol delay
-    std::this_thread::sleep_for(std::chrono::seconds(delay));
+    std::this_thread::sleep_for(std::chrono::seconds(d+5));
 
-    std::thread membershipListenerThread(processIncomingMessages);
-    // sleep for peers to peers to join in-order
-    if (own_id != leader_id) {
-        std::this_thread::sleep_for(std::chrono::seconds(own_id * 5 - 5));
-    }
+    std::thread membershipListenerTCP(processIncomingMessagesTCP);
 
     joinGroup();
 
-    membershipListenerThread.join();
+    std::this_thread::sleep_for(std::chrono::seconds(10));
+
+    // prepare UDP socket for failure detection simulation
+    // int udp_sockfd = setupSocketUDP();
+    // std::thread messageRecieverUDP(receiveMessagesUDP, udp_sockfd);
+
+    // std::this_thread::sleep_for(std::chrono::seconds(5));
+
+    // std::thread heartBeatSender(sendHeartbeat, udp_sockfd);
+    // std::thread failureChecker(checkFailures);
+    
+    // crash if c defined
+    if (c != 0){
+        std::this_thread::sleep_for(std::chrono::seconds(c));
+        std::cerr << "{peer_id: " << own_id << ", view_id: " << view_id
+                  << ", leader: " << leader_id << " message: \"crashing\"";
+        exit(1);
+    }
+
+    connectionListnerTCP.join();
+    // messageRecieverUDP.join();
+    membershipListenerTCP.join();
+    // heartBeatSender.join();
+    // failureChecker.join();
     return 0;
 }
