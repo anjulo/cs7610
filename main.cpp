@@ -4,7 +4,7 @@
 int main(int argc, char* argv[]) {
     // process cli arguments
     std::string hostsfile;
-    int d, c = 0;
+    int d = 0, c = 0;
     for (int i = 1; i < argc; i += 2) {
         std::string arg(argv[i]);
         if (arg == "-h")
@@ -23,6 +23,9 @@ int main(int argc, char* argv[]) {
     int tcp_sockfd = setupSocketTCP();
     std::thread connectionListnerTCP(handleConnectionsTCP, tcp_sockfd);
 
+    // prepare UDP socket for failure detection simulation
+    int udp_sockfd = setupSocketUDP();
+
     // initial delay to allow all processes start
     std::this_thread::sleep_for(std::chrono::seconds(INITIAL_DELAY));
 
@@ -39,22 +42,17 @@ int main(int argc, char* argv[]) {
 
 
     // membership protocol delay
-    std::this_thread::sleep_for(std::chrono::seconds(d+5));
+    std::this_thread::sleep_for(std::chrono::seconds(d));
 
-    std::thread membershipListenerTCP(processIncomingMessagesTCP);
+    std::thread messageListnerThread(receiveAllMessages, udp_sockfd);
 
     joinGroup();
 
-    std::this_thread::sleep_for(std::chrono::seconds(10));
+    std::this_thread::sleep_for(std::chrono::seconds(15));
 
-    // prepare UDP socket for failure detection simulation
-    // int udp_sockfd = setupSocketUDP();
-    // std::thread messageRecieverUDP(receiveMessagesUDP, udp_sockfd);
 
-    // std::this_thread::sleep_for(std::chrono::seconds(5));
-
-    // std::thread heartBeatSender(sendHeartbeat, udp_sockfd);
-    // std::thread failureChecker(checkFailures);
+    std::thread heartBeatSender(sendHeartbeat, udp_sockfd);
+    std::thread failureChecker(checkFailures);
     
     // crash if c defined
     if (c != 0){
@@ -65,9 +63,8 @@ int main(int argc, char* argv[]) {
     }
 
     connectionListnerTCP.join();
-    // messageRecieverUDP.join();
-    membershipListenerTCP.join();
-    // heartBeatSender.join();
-    // failureChecker.join();
+    messageListnerThread.join();
+    heartBeatSender.join();
+    failureChecker.join();
     return 0;
 }

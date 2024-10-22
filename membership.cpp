@@ -9,7 +9,7 @@ int request_id = 1;
 std::vector<int> membership_list;
 std::map<std::pair<int, int>, int> oks_recieved;
 std::map<std::pair<int, int>, PendingOperation> pending_operations;
-// failuter detector
+// failure detector
 std::unordered_map<int, std::chrono::steady_clock::time_point> last_heartbeat;
 std::mutex heartbeat_mutex;
 
@@ -56,20 +56,6 @@ void printMessage(const Message& msg) {
     std::cerr << "}" << std::endl;
 }
 
-void printNewView() {
-    std::cerr << "{peer_id: " << own_id  << ", view_id: " << view_id
-              << ", leader: " << leader_id << ", memb_list: [";
-    
-    for (size_t i = 0; i < membership_list.size(); i++) {
-        std::cerr << membership_list[i];
-        if (i < membership_list.size() - 1) {
-            std::cerr << ", ";
-        }
-    }
-
-    std::cerr << "]}" << std::endl;
-}
-
 void sendMessage(int sockfd, const Message& msg, int dest_id) {
     std::vector<int> buffer;
 
@@ -89,26 +75,18 @@ void sendMessage(int sockfd, const Message& msg, int dest_id) {
         buffer.push_back(static_cast<int>(msg.operation));
     }
 
-    // std::cerr << "Sent to " << dest_id << " ";
-    // printMessage(msg);
     int bytes_sent;
     if ((bytes_sent = send(sockfd, buffer.data(), buffer.size() * sizeof(int), 0)) < 0){
-        std::cerr << "send to " << dest_id << " :" << strerror(errno) << std::endl;
-    } else{
-        std::cerr << "sent " << bytes_sent << " bytes to: " << dest_id << std::endl;
+        std::cerr << "send to " << dest_id << " : " << strerror(errno) << std::endl;
     }
 }
 
 Message receiveMessage(int sockfd, int src_id) {
-    int buffer[16 * sizeof(int)];
-    int bytes_recieved = recv(sockfd, buffer, sizeof(buffer), 0);
+    int buffer[32 * sizeof(int)];
+    int bytes_recieved;
 
-    if (bytes_recieved < 0) {
-        std::cerr << "recv from " << src_id << " :" << strerror(errno) << std::endl;
-        // return Message{Message::JOIN, -1, -1, -1};
+    if ((bytes_recieved = recv(sockfd, buffer, sizeof(buffer), 0)) < 0) {
         return Message{Message::UNKNOWN};
-    } else {
-         std::cerr << "recieved " << bytes_recieved << " bytes from: " << src_id << std::endl;
     }
 
     int elements_read = bytes_recieved / sizeof(int);
@@ -132,16 +110,25 @@ Message receiveMessage(int sockfd, int src_id) {
         msg.operation = static_cast<Operation>(buffer[index++]);
     }
 
-
-    // std::cerr << "Recieved from " << src_id << " ";
-    // printMessage(msg);
-    
     return msg;
 
 }
 
+void printNewView() {
+    std::cerr << "{peer_id: " << own_id  << ", view_id: " << view_id
+              << ", leader: " << leader_id << ", memb_list: [";
+    
+    for (size_t i = 0; i < membership_list.size(); i++) {
+        std::cerr << membership_list[i];
+        if (i < membership_list.size() - 1) {
+            std::cerr << ", ";
+        }
+    }
+
+    std::cerr << "]}" << std::endl;
+}
+
 void joinGroup() {
-    // std::cerr << "JoinGroup" << std::endl;
     if (own_id == leader_id) {
         view_id = 1;
         membership_list.push_back(own_id);
@@ -221,55 +208,28 @@ void handleNewViewMessage(const Message& msg) {
 
 }
 
-void processIncomingMessagesTCP() {
-    // beej's guid: ch. 7
-    while (true) {
-        fd_set readfds;
-        FD_ZERO(&readfds);
-        int maxFd = -1;
-        
-        for (const auto& peer : peers) {
-            FD_SET(peer.second.incoming_sockfd, &readfds);
-            maxFd = std::max(maxFd, peer.second.incoming_sockfd);
-        } 
-
-        struct timeval tv;
-        tv.tv_sec = 2;
-        tv.tv_usec = 0;
-
-        int rv = select(maxFd + 1, &readfds, NULL, NULL, &tv);
-        
-        if (rv < 0) {
-            std::cerr << "Select error" << std::endl;
-            continue;
-        }
-
-        for (auto &peer : peers) {
-            if (FD_ISSET(peer.second.incoming_sockfd, &readfds)){
-                Message msg = receiveMessage(peer.second.incoming_sockfd, peer.first);
-                switch (msg.type) {
-                    case Message::JOIN:
-                        handleJoinMessage(msg);
-                        break;
-                    case Message::REQ:
-                        handleReqMessage(msg);
-                        break;
-                    case Message::OK:
-                        handleOkMessage(msg);
-                        break;
-                    case Message::NEWVIEW:
-                        handleNewViewMessage(msg);
-                        break;
-                    default:
-                        break;
-                }
-            }
-        }
+void handleTCPMessage(int sockfd, int src_id) {
+    Message msg = receiveMessage(sockfd, src_id);
+    switch (msg.type) {
+        case Message::JOIN:
+            handleJoinMessage(msg);
+            break;
+        case Message::REQ:
+            handleReqMessage(msg);
+            break;
+        case Message::OK:
+            handleOkMessage(msg);
+            break;
+        case Message::NEWVIEW:
+            handleNewViewMessage(msg);
+            break;
+        default:
+            break;
     }
 }
+    
 
 void sendHeartbeat(int sockfd) {
-
     while(1) {
         for (size_t i = 0; i < hosts.size(); i++) {
             int id = i + 1;
@@ -283,7 +243,7 @@ void sendHeartbeat(int sockfd) {
 
 void checkFailures() {
     while(1) {
-        std::this_thread::sleep_for(std::chrono::seconds(HEARTBEAT_INTERVAL));
+        std::this_thread::sleep_for(std::chrono::seconds(FAILURE_TIMEOUT));
         std::lock_guard<std::mutex> lock(heartbeat_mutex);
         auto now = std::chrono::steady_clock::now();
 
@@ -292,15 +252,43 @@ void checkFailures() {
             if (id == own_id) continue;
 
             if (last_heartbeat.find(id) == last_heartbeat.end() || 
-                std::chrono::duration<double>(now - last_heartbeat[id]).count() > 10.0) {
+                std::chrono::duration_cast<std::chrono::seconds>(now - last_heartbeat[id]).count() > FAILURE_TIMEOUT) {
+
                     std::cerr << "{peer_id: " << own_id << ", view_id: " << view_id
-                              << ", leader: " << leader_id << ", message: \"peer " << id;;
+                              << ", leader: " << leader_id << ", message: \"peer " << id;
                     
                     if (id == leader_id) std::cerr << " (leader)";
                     std::cerr << " unreachable\"" << std::endl;
 
                     last_heartbeat.erase(id);
                 }
+        }
+    }
+}
+
+void handleUDPMessage(int udp_sockfd) {
+    char buffer[15 * sizeof(char)];
+    struct sockaddr_in peeraddr;
+    socklen_t addrlen = sizeof(peeraddr);
+    int n;
+
+    if ((n = recvfrom(udp_sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *)&peeraddr, &addrlen)) < 0) {
+        std::cerr << "recvfrom: " << strerror(errno) << std::endl;
+        return;
+    } 
+
+    buffer[n] = '\0';
+    char peer_name_[NI_MAXHOST];
+    getnameinfo((struct sockaddr *)&peeraddr, addrlen, peer_name_, NI_MAXHOST, NULL, 0, 0);
+    std::string peer_name(peer_name_);
+
+
+    auto it = std::find(hosts.begin(), hosts.end(), peer_name.substr(0, peer_name.find('.')));
+    if (it != hosts.end()) {
+        int peer_id = it - hosts.begin() + 1;
+        if (strcmp(buffer, HEARTBEAT_MESSAGE) == 0) {
+            std::lock_guard<std::mutex> lock(heartbeat_mutex);
+            last_heartbeat[peer_id] = std::chrono::steady_clock::now();
         }
     }
 }

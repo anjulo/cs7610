@@ -9,7 +9,7 @@
 
 #define HEARTBEAT_MESSAGE "HEARTBEAT"
 #define HEARTBEAT_INTERVAL 5
-#define FAILURE_TIMEOUT 10.0
+#define FAILURE_TIMEOUT 10
 
 enum Operation { ADD };
 
@@ -41,10 +41,11 @@ extern std::unordered_map<int, std::chrono::steady_clock::time_point> last_heart
 extern std::mutex heartbeat_mutex;
 
 void joinGroup();
-void processIncomingMessagesTCP();
+void handleTCPMessage(int sockfd, int src_id);
 
 void sendHeartbeat(int udp_sockfd);
 void checkFailures();
+void handleUDPMessage(int udp_sockfd);
 
 
 #endif

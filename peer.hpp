@@ -39,7 +39,7 @@ void handleConnectionsTCP(int server_sockfd);
 int connectToPeerTCP(const std::string& hostname);
 
 int setupSocketUDP();
-void receiveMessagesUDP(int sockfd);
 void sendMessageUDP(int sockfd, const std::string& dst_host, const char* message);
+void receiveAllMessages(int udp_sockfd);
 
 #endif

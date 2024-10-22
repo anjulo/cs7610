@@ -152,7 +152,7 @@ int setupSocketUDP() {
     hints.ai_flags = AI_PASSIVE;
 
     if((rv = getaddrinfo(NULL, PORT, &hints, &res)) != 0){
-        std::cerr << "Setup UDP socket - getaddrinfo: " << gai_strerror(rv) << std::endl;
+        std::cerr << "setup UDP socket - getaddrinfo: " << gai_strerror(rv) << std::endl;
         return 1;
     }
 
@@ -181,37 +181,6 @@ int setupSocketUDP() {
 
 }
 
-
-void receiveMessagesUDP(int sockfd) {
-     while (1) {
-        char buffer[15 * sizeof(char)];
-        struct sockaddr_in peeraddr;
-        socklen_t addrlen = sizeof(peeraddr);
-        int n;
-
-        if ((n = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *)&peeraddr, &addrlen)) < 0) {
-            std::cerr << "recvfrom: " << strerror(errno) << std::endl;
-            continue;
-        }
-
-        buffer[n] = '\0';
-        char peer_name_[NI_MAXHOST];
-        getnameinfo((struct sockaddr *)&peeraddr, addrlen, peer_name_, NI_MAXHOST, NULL, 0, 0);
-        std::string peer_name(peer_name_);
-
-        // std::cerr << "Received " << buffer << " from " <<  peer_name.substr(0, peer_name.find('.')) << std::endl;
-         
-        auto it = std::find(hosts.begin(), hosts.end(), peer_name.substr(0, peer_name.find('.')));
-        if (it != hosts.end()) {
-            int peer_id = it - hosts.begin() + 1;
-            if (strcmp(buffer, HEARTBEAT_MESSAGE) == 0) {
-                std::lock_guard<std::mutex> lock(heartbeat_mutex);
-                last_heartbeat[peer_id] = std::chrono::steady_clock::now();
-            }
-        }
-    }
-}
-
 void sendMessageUDP(int sockfd, const std::string& dst_host, const char* message) {
     struct addrinfo hints, *res;
     int rv, n;
@@ -220,7 +189,7 @@ void sendMessageUDP(int sockfd, const std::string& dst_host, const char* message
     hints.ai_socktype = SOCK_DGRAM;
 
     if ((rv = getaddrinfo(dst_host.c_str(), PORT, &hints, &res)) != 0) {
-        std::cerr << "sendMessageUDP - getaddrinfo: " << dst_host << " - " << gai_strerror(rv) << std::endl;
+        // std::cerr << "sendMessageUDP - getaddrinfo: " << dst_host << " - " << gai_strerror(rv) << std::endl;
         return;
     }
 
@@ -229,4 +198,40 @@ void sendMessageUDP(int sockfd, const std::string& dst_host, const char* message
     }
 
     freeaddrinfo(res);
+}
+
+
+void receiveAllMessages(int udp_sockfd) {
+    while (true) {
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(udp_sockfd, &readfds);
+        int maxFd = udp_sockfd;
+        
+        for (const auto& peer : peers) {
+            FD_SET(peer.second.incoming_sockfd, &readfds);
+            maxFd = std::max(maxFd, peer.second.incoming_sockfd);
+        } 
+
+        struct timeval tv;
+        tv.tv_sec = 2;
+        tv.tv_usec = 0;
+
+        int rv = select(maxFd + 1, &readfds, NULL, NULL, &tv);
+        
+        if (rv < 0) {
+            std::cerr << "select: " << strerror(errno) << std::endl;
+            continue;
+        }
+
+        if (FD_ISSET(udp_sockfd, &readfds)) {
+            handleUDPMessage(udp_sockfd);
+        }
+
+        for (auto &peer : peers) {
+            if (FD_ISSET(peer.second.incoming_sockfd, &readfds)){
+                handleTCPMessage(peer.second.incoming_sockfd, peer.first);
+            }
+        }
+    }
 }
