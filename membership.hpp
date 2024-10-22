@@ -8,10 +8,10 @@
 #include <mutex>
 
 #define HEARTBEAT_MESSAGE "HEARTBEAT"
-#define HEARTBEAT_INTERVAL 5
-#define FAILURE_TIMEOUT 10
+#define HEARTBEAT_INTERVAL 3
+#define FAILURE_TIMEOUT 6
 
-enum Operation { ADD };
+enum Operation { ADD, DEL };
 
 struct Message {
     enum Type { JOIN, REQ, OK, NEWVIEW, UNKNOWN } type;

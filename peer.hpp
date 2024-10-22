@@ -32,6 +32,9 @@ struct Peer {
 extern std::map<int, Peer> peers;
 extern std::vector<std::string> hosts;
 
+extern std::atomic<bool> should_exit;
+extern std::vector<std::thread> threads;
+
 void readHostsfile(const std::string& filename);
 void configurePeers(std::vector<std::string> hosts);
 int setupSocketTCP();

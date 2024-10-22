@@ -166,7 +166,7 @@ void handleJoinMessage(const Message& msg) {
 void handleReqMessage(const Message& msg) {
     if (own_id == leader_id) return;
 
-    pending_operations.insert({{msg.request_id, msg.view_id}, {msg.view_id, msg.peer_id, msg.operation}});
+    pending_operations.insert({{msg.request_id, msg.view_id}, {msg.request_id, msg.view_id, msg.peer_id, msg.operation}});
 
     Message ok_msg{Message::OK, msg.request_id, msg.view_id};
     sendMessage(peers[leader_id].outgoing_sockfd, ok_msg, leader_id);
@@ -176,27 +176,35 @@ void handleOkMessage(const Message& msg) {
     if (own_id != leader_id) return;
 
     oks_recieved[{msg.request_id, msg.view_id}]++;
+    const auto &op = pending_operations[{msg.request_id, msg.view_id}];
 
-    if (oks_recieved[{msg.request_id, msg.view_id}] == membership_list.size() - 1) {
-        int new_peer_id = -1;
-        const auto& op = pending_operations[{msg.request_id, msg.view_id}];
-        new_peer_id = op.peer_id;
+    int oks_expected = membership_list.size() - 1;
+    if (op.type == Operation::DEL)
+        oks_expected--; 
 
-        if (new_peer_id != -1) {
-            view_id++;
-            membership_list.push_back(new_peer_id);
-            printNewView();
-            Message newview_msg{Message::NEWVIEW, -1, view_id, -1, -1, membership_list};
-
-            for (int id : membership_list) {
-                if (id != own_id)
-                    sendMessage(peers[id].outgoing_sockfd, newview_msg, id);
+    if (oks_recieved[{msg.request_id, msg.view_id}] == oks_expected) {
+        view_id++;
+        if (op.type == Operation::ADD){
+            membership_list.push_back(op.peer_id);
+        } else {
+            auto it = std::find(membership_list.begin(), membership_list.end(), op.peer_id);
+            if (it != membership_list.end()) {
+                membership_list.erase(it);
             }
-            
-            // clear the operation
-            oks_recieved.erase({msg.request_id, msg.view_id});
-            pending_operations.erase({msg.request_id, msg.view_id});
         }
+        
+        printNewView();
+        Message newview_msg{Message::NEWVIEW, -1, view_id, -1, -1, membership_list};
+
+        for (int id : membership_list) {
+            if (id != own_id)
+                sendMessage(peers[id].outgoing_sockfd, newview_msg, id);
+        }
+        
+        // remove pending operation
+        oks_recieved.erase({msg.request_id, msg.view_id});
+        pending_operations.erase({msg.request_id, msg.view_id});
+        
     }
 
 }
@@ -206,6 +214,74 @@ void handleNewViewMessage(const Message& msg) {
     membership_list = msg.membership_list;
     printNewView();
 
+}
+    
+
+void sendHeartbeat(int sockfd) {
+    while(!should_exit.load()) {
+        for (int id : membership_list) {
+            if (id != own_id) {
+                sendMessageUDP(sockfd, hosts[id-1], HEARTBEAT_MESSAGE);
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(HEARTBEAT_INTERVAL));
+    }
+}
+
+void handlePeerFailure(int failed_peer_id) {
+    if (own_id != leader_id) return;
+
+    if (std::find(membership_list.begin(), membership_list.end(), failed_peer_id) == membership_list.end()) return;
+
+    // if leader is the only peer left
+    if (membership_list.size() == 2 && membership_list[0] == leader_id) {
+        view_id++;
+        auto it = std::find(membership_list.begin(), membership_list.end(), failed_peer_id);
+        if (it != membership_list.end()) {
+            membership_list.erase(it);
+        }
+        printNewView();
+        return;
+    }
+
+    Message req_msg{Message::REQ, request_id, view_id, failed_peer_id, own_id, {}, Operation::DEL};
+
+    for (int id : membership_list) {
+        if (id != own_id && id != failed_peer_id)
+            sendMessage(peers[id].outgoing_sockfd, req_msg, id);
+    }
+
+    pending_operations.insert({{request_id, view_id}, {request_id, view_id, failed_peer_id, Operation::DEL}});
+
+    oks_recieved[{request_id, view_id}] = 0;
+    request_id++;
+
+}
+void checkFailures() {
+    while(!should_exit.load()) {
+        std::this_thread::sleep_for(std::chrono::seconds(FAILURE_TIMEOUT));
+        std::lock_guard<std::mutex> lock(heartbeat_mutex);
+        auto now = std::chrono::steady_clock::now();
+
+        for  (int id : membership_list) {
+            if (id == own_id) continue;
+
+            if (last_heartbeat.find(id) == last_heartbeat.end() || 
+                std::chrono::duration_cast<std::chrono::seconds>(now - last_heartbeat[id]).count() > FAILURE_TIMEOUT) {
+
+                    std::cerr << "{peer_id: " << own_id << ", view_id: " << view_id
+                              << ", leader: " << leader_id << ", message: \"peer " << id;
+                    
+                    if (id == leader_id) std::cerr << " (leader)";
+                    std::cerr << " unreachable\"" << std::endl;
+
+                    if (own_id == leader_id) {
+                        handlePeerFailure(id);
+                    }
+                    last_heartbeat.erase(id);
+                }
+        }
+    }
 }
 
 void handleTCPMessage(int sockfd, int src_id) {
@@ -225,44 +301,6 @@ void handleTCPMessage(int sockfd, int src_id) {
             break;
         default:
             break;
-    }
-}
-    
-
-void sendHeartbeat(int sockfd) {
-    while(1) {
-        for (size_t i = 0; i < hosts.size(); i++) {
-            int id = i + 1;
-            if (id != own_id) {
-                sendMessageUDP(sockfd, hosts[i], HEARTBEAT_MESSAGE);
-            }
-        }
-        std::this_thread::sleep_for(std::chrono::seconds(HEARTBEAT_INTERVAL));
-    }
-}
-
-void checkFailures() {
-    while(1) {
-        std::this_thread::sleep_for(std::chrono::seconds(FAILURE_TIMEOUT));
-        std::lock_guard<std::mutex> lock(heartbeat_mutex);
-        auto now = std::chrono::steady_clock::now();
-
-        for  (size_t i = 0; i < hosts.size(); i++) {
-            int id = i + 1;
-            if (id == own_id) continue;
-
-            if (last_heartbeat.find(id) == last_heartbeat.end() || 
-                std::chrono::duration_cast<std::chrono::seconds>(now - last_heartbeat[id]).count() > FAILURE_TIMEOUT) {
-
-                    std::cerr << "{peer_id: " << own_id << ", view_id: " << view_id
-                              << ", leader: " << leader_id << ", message: \"peer " << id;
-                    
-                    if (id == leader_id) std::cerr << " (leader)";
-                    std::cerr << " unreachable\"" << std::endl;
-
-                    last_heartbeat.erase(id);
-                }
-        }
     }
 }
 

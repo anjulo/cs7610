@@ -80,7 +80,7 @@ int setupSocketTCP() {
 }
 
 void handleConnectionsTCP(int server_sockfd) {
-    while (true) {
+    while (!should_exit.load()) {
         struct sockaddr_storage peeraddr;
         socklen_t peeraddr_len = sizeof(peeraddr);
         int new_sockfd = accept(server_sockfd, (struct sockaddr*)&peeraddr, &peeraddr_len);
@@ -202,7 +202,7 @@ void sendMessageUDP(int sockfd, const std::string& dst_host, const char* message
 
 
 void receiveAllMessages(int udp_sockfd) {
-    while (true) {
+    while (!should_exit.load()) {
         fd_set readfds;
         FD_ZERO(&readfds);
         FD_SET(udp_sockfd, &readfds);
