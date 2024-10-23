@@ -6,7 +6,7 @@
 int leader_id = 1;
 int view_id = 1;
 int request_id = 1;
-std::vector<int> membership_list;
+std::vector<int> memb_list;
 std::map<std::pair<int, int>, int> oks_recieved;
 std::map<std::pair<int, int>, PendingOperation> pending_operations;
 // failure detector
@@ -34,10 +34,10 @@ void printMessage(const Message& msg) {
     
     // Print Operation only for NEWVIEW messages
     if (msg.type == Message::NEWVIEW) {
-        std::cerr << ", members: [";
-        for (size_t i = 0; i < msg.membership_list.size(); ++i) {
+        std::cerr << ", memb_list: [";
+        for (size_t i = 0; i < msg.memb_list.size(); ++i) {
             if (i > 0) std::cerr << ",";
-            std::cerr << msg.membership_list[i];
+            std::cerr << msg.memb_list[i];
         }
         std::cerr << "]";
     }
@@ -48,10 +48,10 @@ void printMessage(const Message& msg) {
         std::cerr << ", op: ";
         switch (msg.operation) {
             case Operation::ADD: std::cerr << "ADD"; break;
+            case Operation::DEL: std::cerr << "DEL"; break;
             default: std::cerr << "UNKNOWN"; break;
         }
     }
-    
     
     std::cerr << "}" << std::endl;
 }
@@ -67,8 +67,8 @@ void sendMessage(int sockfd, const Message& msg, int dest_id) {
 
 
     if (msg.type == Message::NEWVIEW) {
-        buffer.push_back(msg.membership_list.size());
-        buffer.insert(buffer.end(), msg.membership_list.begin(), msg.membership_list.end());
+        buffer.push_back(msg.memb_list.size());
+        buffer.insert(buffer.end(), msg.memb_list.begin(), msg.memb_list.end());
     }
     
     if (msg.type == Message::REQ) {
@@ -84,10 +84,11 @@ void sendMessage(int sockfd, const Message& msg, int dest_id) {
 Message receiveMessage(int sockfd, int src_id) {
     int buffer[32 * sizeof(int)];
     int bytes_recieved;
+    bytes_recieved = recv(sockfd, buffer, sizeof(buffer), MSG_PEEK);
+    if (bytes_recieved <= 0) return Message{Message::UNKNOWN};
 
-    if ((bytes_recieved = recv(sockfd, buffer, sizeof(buffer), 0)) < 0) {
-        return Message{Message::UNKNOWN};
-    }
+    bytes_recieved = recv(sockfd, buffer, sizeof(buffer), 0);
+    if (bytes_recieved < (5 * sizeof(int))) return Message{Message::UNKNOWN};
 
     int elements_read = bytes_recieved / sizeof(int);
     int index = 0;
@@ -99,10 +100,13 @@ Message receiveMessage(int sockfd, int src_id) {
     msg.peer_id = buffer[index++];
     msg.sender_id = buffer[index++];
 
+    // validate socker not closed on the other side
+    if (msg.type < Message::JOIN || msg.type > Message::NEWVIEW) return Message{Message::UNKNOWN};
+
     if (msg.type == Message::NEWVIEW) { //&& index < elements_read)
         int list_size = buffer[index++];
         for (int i = 0; i < list_size && index < elements_read; i++) {
-            msg.membership_list.push_back(buffer[index++]);
+            msg.memb_list.push_back(buffer[index++]);
         }
     }
 
@@ -118,9 +122,9 @@ void printNewView() {
     std::cerr << "{peer_id: " << own_id  << ", view_id: " << view_id
               << ", leader: " << leader_id << ", memb_list: [";
     
-    for (size_t i = 0; i < membership_list.size(); i++) {
-        std::cerr << membership_list[i];
-        if (i < membership_list.size() - 1) {
+    for (size_t i = 0; i < memb_list.size(); i++) {
+        std::cerr << memb_list[i];
+        if (i < memb_list.size() - 1) {
             std::cerr << ", ";
         }
     }
@@ -131,7 +135,7 @@ void printNewView() {
 void joinGroup() {
     if (own_id == leader_id) {
         view_id = 1;
-        membership_list.push_back(own_id);
+        memb_list.push_back(own_id);
         printNewView();
     } else {
         Message join_msg{Message::JOIN, -1, -1, own_id, own_id};
@@ -142,17 +146,17 @@ void joinGroup() {
 void handleJoinMessage(const Message& msg) {
     if (own_id != leader_id) return;
 
-    if (membership_list.size() == 1 && membership_list[0] == leader_id) {
+    if (memb_list.size() == 1 && memb_list[0] == leader_id) {
         view_id++;
-        membership_list.push_back(msg.sender_id);
+        memb_list.push_back(msg.sender_id);
         printNewView();
-        Message newview_msg{Message::NEWVIEW, request_id++, view_id, -1, -1, membership_list};
+        Message newview_msg{Message::NEWVIEW, request_id++, view_id, -1, -1, memb_list};
         sendMessage(peers[msg.sender_id].outgoing_sockfd, newview_msg, msg.sender_id);
         return;
     }
 
     Message req_msg{Message::REQ, request_id, view_id, msg.sender_id, own_id, {}, Operation::ADD};
-    for (int id : membership_list){
+    for (int id : memb_list){
         if (id != own_id) {
             sendMessage(peers[id].outgoing_sockfd, req_msg, id);
         }
@@ -174,29 +178,20 @@ void handleReqMessage(const Message& msg) {
 
 void handleOkMessage(const Message& msg) {
     if (own_id != leader_id) return;
-
+    
     oks_recieved[{msg.request_id, msg.view_id}]++;
     const auto &op = pending_operations[{msg.request_id, msg.view_id}];
 
-    int oks_expected = membership_list.size() - 1;
-    if (op.type == Operation::DEL)
-        oks_expected--; 
-
-    if (oks_recieved[{msg.request_id, msg.view_id}] == oks_expected) {
+    if (oks_recieved[{msg.request_id, msg.view_id}] >= memb_list.size() - 1) {
         view_id++;
         if (op.type == Operation::ADD){
-            membership_list.push_back(op.peer_id);
-        } else {
-            auto it = std::find(membership_list.begin(), membership_list.end(), op.peer_id);
-            if (it != membership_list.end()) {
-                membership_list.erase(it);
-            }
-        }
+            memb_list.push_back(op.peer_id);
+        } 
         
         printNewView();
-        Message newview_msg{Message::NEWVIEW, -1, view_id, -1, -1, membership_list};
+        Message newview_msg{Message::NEWVIEW, -1, view_id, -1, -1, memb_list};
 
-        for (int id : membership_list) {
+        for (int id : memb_list) {
             if (id != own_id)
                 sendMessage(peers[id].outgoing_sockfd, newview_msg, id);
         }
@@ -211,7 +206,7 @@ void handleOkMessage(const Message& msg) {
 
 void handleNewViewMessage(const Message& msg) {
     view_id = msg.view_id;
-    membership_list = msg.membership_list;
+    memb_list = msg.memb_list;
     printNewView();
 
 }
@@ -219,55 +214,53 @@ void handleNewViewMessage(const Message& msg) {
 
 void sendHeartbeat(int sockfd) {
     while(!should_exit.load()) {
-        for (int id : membership_list) {
+        for (int id : memb_list) {
             if (id != own_id) {
                 sendMessageUDP(sockfd, hosts[id-1], HEARTBEAT_MESSAGE);
             }
         }
         std::this_thread::sleep_for(std::chrono::seconds(HEARTBEAT_INTERVAL));
     }
+    // std::cerr << "exiting sendHeartbeat" << std::endl;
 }
 
 void handlePeerFailure(int failed_peer_id) {
-    if (own_id != leader_id) return;
 
-    if (std::find(membership_list.begin(), membership_list.end(), failed_peer_id) == membership_list.end()) return;
+    auto it = std::find(memb_list.begin(), memb_list.end(), failed_peer_id);
+    if (it == memb_list.end()) return;
+    else memb_list.erase(it);
 
     // if leader is the only peer left
-    if (membership_list.size() == 2 && membership_list[0] == leader_id) {
+    if (memb_list.size() == 1 && memb_list[0] == leader_id) {
         view_id++;
-        auto it = std::find(membership_list.begin(), membership_list.end(), failed_peer_id);
-        if (it != membership_list.end()) {
-            membership_list.erase(it);
-        }
         printNewView();
-        return;
+    } else {
+        Message req_msg{Message::REQ, request_id, view_id, failed_peer_id, own_id, {}, Operation::DEL};
+
+        pending_operations.insert({{request_id, view_id}, {request_id, view_id, failed_peer_id, Operation::DEL}});
+        oks_recieved[{request_id, view_id}] = 0;
+        request_id++;
+
+        for (int id : memb_list) {
+            if (id != own_id && id != failed_peer_id)
+                sendMessage(peers[id].outgoing_sockfd, req_msg, id);
+        }
+
     }
 
-    Message req_msg{Message::REQ, request_id, view_id, failed_peer_id, own_id, {}, Operation::DEL};
-
-    for (int id : membership_list) {
-        if (id != own_id && id != failed_peer_id)
-            sendMessage(peers[id].outgoing_sockfd, req_msg, id);
-    }
-
-    pending_operations.insert({{request_id, view_id}, {request_id, view_id, failed_peer_id, Operation::DEL}});
-
-    oks_recieved[{request_id, view_id}] = 0;
-    request_id++;
 
 }
 void checkFailures() {
     while(!should_exit.load()) {
-        std::this_thread::sleep_for(std::chrono::seconds(FAILURE_TIMEOUT));
+        std::this_thread::sleep_for(std::chrono::seconds(2 * HEARTBEAT_INTERVAL));
         std::lock_guard<std::mutex> lock(heartbeat_mutex);
         auto now = std::chrono::steady_clock::now();
 
-        for  (int id : membership_list) {
+        for  (int id : memb_list) {
             if (id == own_id) continue;
 
             if (last_heartbeat.find(id) == last_heartbeat.end() || 
-                std::chrono::duration_cast<std::chrono::seconds>(now - last_heartbeat[id]).count() > FAILURE_TIMEOUT) {
+                std::chrono::duration_cast<std::chrono::seconds>(now - last_heartbeat[id]).count() > (2 * HEARTBEAT_INTERVAL)) {
 
                     std::cerr << "{peer_id: " << own_id << ", view_id: " << view_id
                               << ", leader: " << leader_id << ", message: \"peer " << id;

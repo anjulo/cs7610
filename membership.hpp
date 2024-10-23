@@ -9,7 +9,6 @@
 
 #define HEARTBEAT_MESSAGE "HEARTBEAT"
 #define HEARTBEAT_INTERVAL 3
-#define FAILURE_TIMEOUT 6
 
 enum Operation { ADD, DEL };
 
@@ -19,7 +18,7 @@ struct Message {
     int view_id;
     int peer_id;
     int sender_id;
-    std::vector<int> membership_list;
+    std::vector<int> memb_list;
     Operation operation;
 };
 
@@ -33,7 +32,7 @@ struct PendingOperation {
 extern int leader_id;
 extern int view_id;
 extern int request_id;
-extern std::vector<int> membership_list;
+extern std::vector<int> memb_list;
 extern std::map<std::pair<int, int>, int> oks_recieved;
 extern std::map<std::pair<int, int>, PendingOperation> pending_operations;
 

@@ -79,30 +79,6 @@ int setupSocketTCP() {
     return sockfd;
 }
 
-void handleConnectionsTCP(int server_sockfd) {
-    while (!should_exit.load()) {
-        struct sockaddr_storage peeraddr;
-        socklen_t peeraddr_len = sizeof(peeraddr);
-        int new_sockfd = accept(server_sockfd, (struct sockaddr*)&peeraddr, &peeraddr_len);
-        
-        if (new_sockfd < 0) {
-            std::cerr << "Error accepting connection" << std::endl;
-            continue;
-        }
-
-        char hostname_[NI_MAXHOST];
-        getnameinfo((struct sockaddr*)&peeraddr, peeraddr_len, hostname_, NI_MAXHOST, NULL, 0, NI_NOFQDN);
-        std::string hostname(hostname_);
-        
-        for (auto& peer : peers) {
-            if (peer.second.hostname == hostname.substr(0, hostname.find('.'))) {
-                peer.second.incoming_sockfd = new_sockfd;
-                break;
-            }
-        }
-    }
-}
-
 int connectToPeerTCP(const std::string& hostname) {
     int sockfd, rv;
     struct addrinfo hints, *res, *p;
@@ -189,7 +165,6 @@ void sendMessageUDP(int sockfd, const std::string& dst_host, const char* message
     hints.ai_socktype = SOCK_DGRAM;
 
     if ((rv = getaddrinfo(dst_host.c_str(), PORT, &hints, &res)) != 0) {
-        // std::cerr << "sendMessageUDP - getaddrinfo: " << dst_host << " - " << gai_strerror(rv) << std::endl;
         return;
     }
 
@@ -200,22 +175,44 @@ void sendMessageUDP(int sockfd, const std::string& dst_host, const char* message
     freeaddrinfo(res);
 }
 
+void handleTCPConnection(int tcp_sockfd) {
+    struct sockaddr_storage peeraddr;
+    socklen_t peeraddr_len = sizeof(peeraddr);
+    int new_sockfd = accept(tcp_sockfd, (struct sockaddr*)&peeraddr, &peeraddr_len);
+    
+    if (new_sockfd < 0) {
+        std::cerr << "accept: " << strerror(errno) << std::endl;
+        return;
+    }
 
-void receiveAllMessages(int udp_sockfd) {
+    char hostname_[NI_MAXHOST];
+    getnameinfo((struct sockaddr*)&peeraddr, peeraddr_len, hostname_, NI_MAXHOST, NULL, 0, NI_NOFQDN);
+    std::string hostname(hostname_);
+    
+    for (auto& peer : peers) {
+        if (peer.second.hostname == hostname.substr(0, hostname.find('.'))) {
+            peer.second.incoming_sockfd = new_sockfd;
+            break;
+        }
+    }
+}
+
+void receiveAllMessages(int tcp_sockfd, int udp_sockfd) {
+
+    fd_set readfds;
+    struct timeval tv;
+    tv.tv_sec = 2;
+    tv.tv_usec = 0;
     while (!should_exit.load()) {
-        fd_set readfds;
         FD_ZERO(&readfds);
+        FD_SET(tcp_sockfd, &readfds);
         FD_SET(udp_sockfd, &readfds);
-        int maxFd = udp_sockfd;
+        int maxFd = std::max(tcp_sockfd, udp_sockfd);
         
         for (const auto& peer : peers) {
             FD_SET(peer.second.incoming_sockfd, &readfds);
             maxFd = std::max(maxFd, peer.second.incoming_sockfd);
         } 
-
-        struct timeval tv;
-        tv.tv_sec = 2;
-        tv.tv_usec = 0;
 
         int rv = select(maxFd + 1, &readfds, NULL, NULL, &tv);
         
@@ -224,9 +221,8 @@ void receiveAllMessages(int udp_sockfd) {
             continue;
         }
 
-        if (FD_ISSET(udp_sockfd, &readfds)) {
-            handleUDPMessage(udp_sockfd);
-        }
+        if(FD_ISSET(tcp_sockfd, &readfds)) handleTCPConnection(tcp_sockfd);
+        if (FD_ISSET(udp_sockfd, &readfds)) handleUDPMessage(udp_sockfd);
 
         for (auto &peer : peers) {
             if (FD_ISSET(peer.second.incoming_sockfd, &readfds)){

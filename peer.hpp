@@ -38,11 +38,11 @@ extern std::vector<std::thread> threads;
 void readHostsfile(const std::string& filename);
 void configurePeers(std::vector<std::string> hosts);
 int setupSocketTCP();
-void handleConnectionsTCP(int server_sockfd);
+void handleTCPConnection(int tcp_sockfd);
 int connectToPeerTCP(const std::string& hostname);
 
 int setupSocketUDP();
 void sendMessageUDP(int sockfd, const std::string& dst_host, const char* message);
-void receiveAllMessages(int udp_sockfd);
+void receiveAllMessages(int tcp_sockfd, int udp_sockfd);
 
 #endif

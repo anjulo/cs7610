@@ -1,8 +1,8 @@
 #include "peer.hpp"
 #include "membership.hpp"
 
-std::vector<std::thread> threads;
 std::atomic<bool> should_exit(false);
+std::vector<std::thread> threads;
 
 int main(int argc, char* argv[]) {
     // process cli arguments
@@ -22,12 +22,10 @@ int main(int argc, char* argv[]) {
     readHostsfile(hostsfile);
     configurePeers(hosts);
 
-    // prepare TCP socket and listen for incoming connection requests from peers
+    // prepare TCP and UDP socket
     int tcp_sockfd = setupSocketTCP();
-    threads.push_back(std::thread(handleConnectionsTCP, tcp_sockfd));
-
-    // prepare UDP socket for failure detection simulation
     int udp_sockfd = setupSocketUDP();
+    threads.push_back(std::thread(receiveAllMessages, tcp_sockfd, udp_sockfd));
 
     // initial delay to allow all processes start
     std::this_thread::sleep_for(std::chrono::seconds(INITIAL_DELAY));
@@ -46,23 +44,17 @@ int main(int argc, char* argv[]) {
 
     // membership protocol delay
     std::this_thread::sleep_for(std::chrono::seconds(d));
-    threads.push_back(std::thread(receiveAllMessages, udp_sockfd));
 
     joinGroup();
 
     std::this_thread::sleep_for(std::chrono::seconds(15));
 
-
     threads.push_back(std::thread(checkFailures));
     threads.push_back(std::thread(sendHeartbeat, udp_sockfd));
 
-    
     // crash if c defined
     if (c != 0){
-        std::this_thread::sleep_for(std::chrono::seconds(c));
-        std::cerr << "{peer_id: " << own_id << ", view_id: " << view_id
-                  << ", leader: " << leader_id << " message: \"crashing\"" 
-                  << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(c * 2));
 
         should_exit.store(true);
 
@@ -73,6 +65,9 @@ int main(int argc, char* argv[]) {
             if (peer.second.incoming_sockfd != -1) close(peer.second.incoming_sockfd);
             if (peer.second.outgoing_sockfd != -1) close(peer.second.outgoing_sockfd);
         }
+        std::cerr << "{peer_id: " << own_id << ", view_id: " << view_id
+                  << ", leader: " << leader_id << " message: \"crashing\"" 
+                  << std::endl;
         exit(0);
 
     }
