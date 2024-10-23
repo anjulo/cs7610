@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
 
     // crash if c defined
     if (c != 0){
-        std::this_thread::sleep_for(std::chrono::seconds(c));
+        std::this_thread::sleep_for(std::chrono::seconds(c * 2));
         crashGracefully();
     }
     if (t != 0) {

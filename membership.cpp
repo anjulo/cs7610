@@ -61,7 +61,6 @@ void printMessage(const Message& msg) {
 }
 
 void sendMessage(int sockfd, const Message& msg, int dest_id) {
-
     std::vector<int> buffer;
 
     buffer.push_back(static_cast<int>(msg.type));
@@ -298,8 +297,8 @@ void handleLeaderFailure() {
             if (id != own_id && id != leader_id.load())
                 sendMessage(peers[id].outgoing_sockfd, newleader_msg, id);
         }
+        leader_id.store(new_leader_id);
     }
-    leader_id.store(new_leader_id);
 }
 void checkFailures() {
     while(!should_exit.load()) {
