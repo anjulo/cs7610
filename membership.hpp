@@ -13,7 +13,7 @@
 enum Operation { ADD, DEL, PENDING, NOTHING, UNKOWN };
 
 struct Message {
-    enum Type { JOIN, REQ, OK, NEWVIEW, NEWLEADER, UNKNOWN } type;
+    enum Type { JOIN, REQ, OK, NEWVIEW, NEWLEADER, NL_RESPONSE, UNKNOWN } type;
     int req_id;
     int view_id;
     int peer_id;
@@ -45,6 +45,8 @@ void handleTCPMessage(int sockfd, int src_id);
 void sendHeartbeat(int udp_sockfd);
 void checkFailures();
 void handleUDPMessage(int udp_sockfd);
+
+void sendREQBeforeCrash();
 
 
 #endif

@@ -24,7 +24,9 @@ void printMessage(const Message& msg) {
         case Message::REQ: std::cerr << "REQ"; break;
         case Message::OK: std::cerr << "OK"; break;
         case Message::NEWVIEW: std::cerr << "NEWVIEW"; break;
-        default: std::cerr << "UNKNOWN"; break;
+        case Message::NEWLEADER: std::cerr << "NEWLEADER"; break;
+        case Message::NL_RESPONSE: std::cerr << "NL_RESPONSE"; break;
+        default: std::cerr << "UNKNOWN " << msg.type; break;
     }
     
     if (msg.req_id > 0) std::cerr << ", req_id: " << msg.req_id;
@@ -44,12 +46,14 @@ void printMessage(const Message& msg) {
 
 
     // Print Operation only for REQ messages
-    if (msg.type == Message::REQ) {
+    if (msg.type == Message::REQ || msg.type == Message::NEWLEADER || msg.type == Message::NL_RESPONSE) {
         std::cerr << ", op: ";
         switch (msg.operation) {
             case Operation::ADD: std::cerr << "ADD"; break;
             case Operation::DEL: std::cerr << "DEL"; break;
-            default: std::cerr << "UNKNOWN"; break;
+            case Operation::PENDING: std::cerr << "PENDING"; break;
+            case Operation::NOTHING: std::cerr << "NOTHING"; break;
+            default: std::cerr << "UNKNOWN "<< msg.operation ; break;
         }
     }
     
@@ -57,6 +61,9 @@ void printMessage(const Message& msg) {
 }
 
 void sendMessage(int sockfd, const Message& msg, int dest_id) {
+    // std::cerr << "sendMessage to " << dest_id << " : ";
+    // printMessage(msg);
+
     std::vector<int> buffer;
 
     buffer.push_back(static_cast<int>(msg.type));
@@ -71,7 +78,7 @@ void sendMessage(int sockfd, const Message& msg, int dest_id) {
         buffer.insert(buffer.end(), msg.memb_list.begin(), msg.memb_list.end());
     }
     
-    if (msg.type == Message::REQ) {
+    if (msg.type == Message::REQ || msg.type == Message::NEWLEADER || msg.type == Message::NL_RESPONSE) {
         buffer.push_back(static_cast<int>(msg.operation));
     }
 
@@ -82,7 +89,7 @@ void sendMessage(int sockfd, const Message& msg, int dest_id) {
 }
 
 Message receiveMessage(int sockfd, int src_id) {
-    int buffer[32 * sizeof(int)];
+    int buffer[64 * sizeof(int)];
     int bytes_recieved;
     bytes_recieved = recv(sockfd, buffer, sizeof(buffer), MSG_PEEK);
     if (bytes_recieved <= 0) return Message{Message::UNKNOWN};
@@ -101,7 +108,7 @@ Message receiveMessage(int sockfd, int src_id) {
     msg.sender_id = buffer[index++];
 
     // validate socker not closed on the other side
-    if (msg.type < Message::JOIN || msg.type > Message::NEWVIEW) return Message{Message::UNKNOWN};
+    if (msg.type < Message::JOIN || msg.type > Message::NL_RESPONSE) return Message{Message::UNKNOWN};
 
     if (msg.type == Message::NEWVIEW) { //&& index < elements_read)
         int list_size = buffer[index++];
@@ -110,7 +117,7 @@ Message receiveMessage(int sockfd, int src_id) {
         }
     }
 
-    if (msg.type == Message::REQ) {
+    if (msg.type == Message::REQ || msg.type == Message::NEWLEADER || msg.type == Message::NL_RESPONSE) {
         msg.operation = static_cast<Operation>(buffer[index++]);
     }
 
@@ -209,8 +216,53 @@ void handleNewViewMessage(const Message& msg) {
     memb_list = msg.memb_list;
     printNewView();
     pending_operations.erase({msg.req_id, msg.view_id-1});
+    // std::cerr << "Pending op's count: " << pending_operations.size() << std::endl;
+    // // remove pending ops this NEWVIEW completes
+    // for (auto it = pending_operations.begin(); it != pending_operations.end(); ) {
+    //     const auto& op = it->second;
+    //     auto peer_it = std::find(memb_list.begin(), memb_list.end(), op.peer_id);
+    //     if ((op.type == Operation::ADD && peer_it != memb_list.end() || 
+    //          op.type == Operation::DEL && peer_it == memb_list.end())){
+    //         it = pending_operations.erase(it);
+    //     } else {
+    //         ++it;
+    //     }
+    // }
 }
     
+
+void handleNewLeaderMessage(const Message& msg) {
+    leader_id = msg.sender_id;
+    // std::cerr << "Pending op's count: " << pending_operations.size() << std::endl;
+    if (pending_operations.empty()) {
+        Message nl_response{Message::NL_RESPONSE, msg.req_id, view_id, -1, own_id, {}, Operation::NOTHING};
+        sendMessage(peers[msg.sender_id].outgoing_sockfd, nl_response, msg.sender_id);
+    } else {
+        for (const auto& pending : pending_operations) {
+            const auto& op = pending.second;
+            // std::cerr << "pending op type: " << op.type <<std::endl;
+            Message nl_response{Message::NL_RESPONSE, msg.req_id, view_id, op.peer_id, own_id, {}, op.type};
+            sendMessage(peers[msg.sender_id].outgoing_sockfd, nl_response, msg.sender_id);
+        }
+    }
+}
+
+void handleNLResponse(const Message& msg) {
+    if (msg.operation == Operation::NOTHING)
+        return;
+    
+    // restart protocol
+    Message req_msg{Message::REQ, req_id, view_id, msg.peer_id, own_id, {}, msg.operation};
+    for (int id : memb_list) {
+        if(id != own_id) {
+            sendMessage(peers[id].outgoing_sockfd, req_msg, id);
+        }
+    }
+
+    pending_operations.insert({{req_id, view_id}, {req_id, view_id, msg.peer_id, msg.operation}});
+    oks_recieved[{req_id, view_id}] = 0;
+    req_id++;
+}
 
 void sendHeartbeat(int sockfd) {
     while(!should_exit.load()) {
@@ -221,7 +273,6 @@ void sendHeartbeat(int sockfd) {
         }
         std::this_thread::sleep_for(std::chrono::seconds(HEARTBEAT_INTERVAL));
     }
-    // std::cerr << "exiting sendHeartbeat" << std::endl;
 }
 
 void handlePeerFailure(int failed_peer_id) {
@@ -247,8 +298,26 @@ void handlePeerFailure(int failed_peer_id) {
         }
 
     }
+}
 
+void handleLeaderFailure() {
+    int new_leader_id = 10; // max peer id
+    for (int id : memb_list) {
+        if  (id < new_leader_id && id != leader_id)
+            new_leader_id = id;
+    }
 
+    // leader_id = new_leader_id;
+    if (new_leader_id == own_id) {
+        std::cerr << "I'm the leader!" << std::endl;
+        Message newleader_msg{Message::NEWLEADER, req_id++, view_id, -1, own_id, {}, Operation::PENDING};
+        for (int id : memb_list) {
+            if (id != own_id && id != leader_id)
+                sendMessage(peers[id].outgoing_sockfd, newleader_msg, id);
+        }
+    }
+    leader_id = new_leader_id;
+    // std::cerr << "New Leader is: " << new_leader_id << std::endl;
 }
 void checkFailures() {
     while(!should_exit.load()) {
@@ -265,17 +334,31 @@ void checkFailures() {
                     std::cerr << "{peer_id: " << own_id << ", view_id: " << view_id
                               << ", leader: " << leader_id << ", message: \"peer " << id;
                     
-                    if (id == leader_id) std::cerr << " (leader)";
+                    if (id == leader_id) 
+                        std::cerr << " (leader)";
                     std::cerr << " unreachable\"" << std::endl;
 
-                    if (own_id == leader_id) {
+                    if (id == leader_id)
+                        handleLeaderFailure();
+
+                    if (own_id == leader_id)
                         handlePeerFailure(id);
-                    }
                     last_heartbeat.erase(id);
                 }
         }
     }
 }
+
+void sendREQBeforeCrash() {
+    if (memb_list.size() < 3) return;
+    int peer_to_remove = memb_list.back();
+    Message req_msg{Message::REQ, req_id, view_id, peer_to_remove, own_id, {}, Operation::DEL};
+    for (int id : memb_list) {
+        if (id != own_id && id != peer_to_remove && id != leader_id + 1)
+            sendMessage(peers[id].outgoing_sockfd, req_msg, id);
+    }
+}
+
 
 void handleTCPMessage(int sockfd, int src_id) {
     Message msg = receiveMessage(sockfd, src_id);
@@ -291,6 +374,12 @@ void handleTCPMessage(int sockfd, int src_id) {
             break;
         case Message::NEWVIEW:
             handleNewViewMessage(msg);
+            break;
+        case Message::NEWLEADER:
+            handleNewLeaderMessage(msg);
+            break;
+        case Message::NL_RESPONSE:
+            handleNLResponse(msg);
             break;
         default:
             break;
