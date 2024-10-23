@@ -3,7 +3,7 @@
 
 #include <sstream>
 
-int leader_id = 1;
+std::atomic<int> leader_id(1);
 int view_id = 1;
 int req_id = 1;
 std::vector<int> memb_list;
@@ -61,8 +61,6 @@ void printMessage(const Message& msg) {
 }
 
 void sendMessage(int sockfd, const Message& msg, int dest_id) {
-    // std::cerr << "sendMessage to " << dest_id << " : ";
-    // printMessage(msg);
 
     std::vector<int> buffer;
 
@@ -127,7 +125,7 @@ Message receiveMessage(int sockfd, int src_id) {
 
 void printNewView() {
     std::cerr << "{peer_id: " << own_id  << ", view_id: " << view_id
-              << ", leader: " << leader_id << ", memb_list: [";
+              << ", leader: " << leader_id.load() << ", memb_list: [";
     
     for (size_t i = 0; i < memb_list.size(); i++) {
         std::cerr << memb_list[i];
@@ -140,20 +138,20 @@ void printNewView() {
 }
 
 void joinGroup() {
-    if (own_id == leader_id) {
+    if (own_id == leader_id.load()) {
         view_id = 1;
         memb_list.push_back(own_id);
         printNewView();
     } else {
         Message join_msg{Message::JOIN, -1, -1, own_id, own_id};
-        sendMessage(peers[leader_id].outgoing_sockfd, join_msg, leader_id);
+        sendMessage(peers[leader_id.load()].outgoing_sockfd, join_msg, leader_id.load());
     }
 }
 
 void handleJoinMessage(const Message& msg) {
-    if (own_id != leader_id) return;
+    if (own_id != leader_id.load()) return;
 
-    if (memb_list.size() == 1 && memb_list[0] == leader_id) {
+    if (memb_list.size() == 1 && memb_list[0] == leader_id.load()) {
         view_id++;
         memb_list.push_back(msg.sender_id);
         printNewView();
@@ -175,16 +173,16 @@ void handleJoinMessage(const Message& msg) {
 }
 
 void handleReqMessage(const Message& msg) {
-    if (own_id == leader_id) return;
+    if (own_id == leader_id.load()) return;
 
     pending_operations.insert({{msg.req_id, msg.view_id}, {msg.req_id, msg.view_id, msg.peer_id, msg.operation}});
 
     Message ok_msg{Message::OK, msg.req_id, msg.view_id};
-    sendMessage(peers[leader_id].outgoing_sockfd, ok_msg, leader_id);
+    sendMessage(peers[leader_id.load()].outgoing_sockfd, ok_msg, leader_id.load());
 }
 
 void handleOkMessage(const Message& msg) {
-    if (own_id != leader_id) return;
+    if (own_id != leader_id.load()) return;
     
     oks_recieved[{msg.req_id, msg.view_id}]++;
     const auto &op = pending_operations[{msg.req_id, msg.view_id}];
@@ -216,24 +214,11 @@ void handleNewViewMessage(const Message& msg) {
     memb_list = msg.memb_list;
     printNewView();
     pending_operations.erase({msg.req_id, msg.view_id-1});
-    // std::cerr << "Pending op's count: " << pending_operations.size() << std::endl;
-    // // remove pending ops this NEWVIEW completes
-    // for (auto it = pending_operations.begin(); it != pending_operations.end(); ) {
-    //     const auto& op = it->second;
-    //     auto peer_it = std::find(memb_list.begin(), memb_list.end(), op.peer_id);
-    //     if ((op.type == Operation::ADD && peer_it != memb_list.end() || 
-    //          op.type == Operation::DEL && peer_it == memb_list.end())){
-    //         it = pending_operations.erase(it);
-    //     } else {
-    //         ++it;
-    //     }
-    // }
 }
     
 
 void handleNewLeaderMessage(const Message& msg) {
-    leader_id = msg.sender_id;
-    // std::cerr << "Pending op's count: " << pending_operations.size() << std::endl;
+    leader_id.store(msg.sender_id);
     if (pending_operations.empty()) {
         Message nl_response{Message::NL_RESPONSE, msg.req_id, view_id, -1, own_id, {}, Operation::NOTHING};
         sendMessage(peers[msg.sender_id].outgoing_sockfd, nl_response, msg.sender_id);
@@ -282,7 +267,7 @@ void handlePeerFailure(int failed_peer_id) {
     else memb_list.erase(it);
 
     // if leader is the only peer left
-    if (memb_list.size() == 1 && memb_list[0] == leader_id) {
+    if (memb_list.size() == 1 && memb_list[0] == leader_id.load()) {
         view_id++;
         printNewView();
     } else {
@@ -301,23 +286,20 @@ void handlePeerFailure(int failed_peer_id) {
 }
 
 void handleLeaderFailure() {
-    int new_leader_id = 10; // max peer id
+    int new_leader_id = 6; // max peer id
     for (int id : memb_list) {
-        if  (id < new_leader_id && id != leader_id)
+        if  (id < new_leader_id && id != leader_id.load())
             new_leader_id = id;
     }
-
-    // leader_id = new_leader_id;
     if (new_leader_id == own_id) {
         std::cerr << "I'm the leader!" << std::endl;
         Message newleader_msg{Message::NEWLEADER, req_id++, view_id, -1, own_id, {}, Operation::PENDING};
         for (int id : memb_list) {
-            if (id != own_id && id != leader_id)
+            if (id != own_id && id != leader_id.load())
                 sendMessage(peers[id].outgoing_sockfd, newleader_msg, id);
         }
     }
-    leader_id = new_leader_id;
-    // std::cerr << "New Leader is: " << new_leader_id << std::endl;
+    leader_id.store(new_leader_id);
 }
 void checkFailures() {
     while(!should_exit.load()) {
@@ -332,16 +314,16 @@ void checkFailures() {
                 std::chrono::duration_cast<std::chrono::seconds>(now - last_heartbeat[id]).count() > (2 * HEARTBEAT_INTERVAL)) {
 
                     std::cerr << "{peer_id: " << own_id << ", view_id: " << view_id
-                              << ", leader: " << leader_id << ", message: \"peer " << id;
+                              << ", leader: " << leader_id.load() << ", message: \"peer " << id;
                     
-                    if (id == leader_id) 
+                    if (id == leader_id.load()) 
                         std::cerr << " (leader)";
                     std::cerr << " unreachable\"" << std::endl;
 
-                    if (id == leader_id)
+                    if (id == leader_id.load())
                         handleLeaderFailure();
 
-                    if (own_id == leader_id)
+                    if (own_id == leader_id.load())
                         handlePeerFailure(id);
                     last_heartbeat.erase(id);
                 }
@@ -349,12 +331,10 @@ void checkFailures() {
     }
 }
 
-void sendREQBeforeCrash() {
-    if (memb_list.size() < 3) return;
-    int peer_to_remove = memb_list.back();
-    Message req_msg{Message::REQ, req_id, view_id, peer_to_remove, own_id, {}, Operation::DEL};
+void sendREQBeforeCrash() {;
+    Message req_msg{Message::REQ, req_id, view_id, own_id, own_id, {}, Operation::DEL};
     for (int id : memb_list) {
-        if (id != own_id && id != peer_to_remove && id != leader_id + 1)
+        if (id != own_id && id != leader_id.load() + 1)
             sendMessage(peers[id].outgoing_sockfd, req_msg, id);
     }
 }

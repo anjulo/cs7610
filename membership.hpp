@@ -6,9 +6,10 @@
 #include <map>
 #include <unordered_map>
 #include <mutex>
+#include <atomic>
 
 #define HEARTBEAT_MESSAGE "HEARTBEAT"
-#define HEARTBEAT_INTERVAL 3
+#define HEARTBEAT_INTERVAL 4
 
 enum Operation { ADD, DEL, PENDING, NOTHING, UNKOWN };
 
@@ -29,7 +30,7 @@ struct PendingOperation {
     Operation type;
 };
 
-extern int leader_id;
+extern std::atomic<int> leader_id;
 extern int view_id;
 extern int req_id;
 extern std::vector<int> memb_list;

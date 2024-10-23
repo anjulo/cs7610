@@ -16,7 +16,7 @@ void crashGracefully() {
         if (peer.second.outgoing_sockfd != -1) close(peer.second.outgoing_sockfd);
     }
     std::cerr << "{peer_id: " << own_id << ", view_id: " << view_id
-                << ", leader: " << leader_id << " message: \"crashing\"" 
+                << ", leader: " << leader_id.load() << " message: \"crashing\"" 
                 << std::endl;
     exit(0);
 }
@@ -77,7 +77,7 @@ int main(int argc, char* argv[]) {
     }
     if (t != 0) {
         std::this_thread::sleep_for(std::chrono::seconds(10));
-        // sendREQBeforeCrash();
+        sendREQBeforeCrash();
         crashGracefully();
     }
 
