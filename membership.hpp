@@ -10,11 +10,11 @@
 #define HEARTBEAT_MESSAGE "HEARTBEAT"
 #define HEARTBEAT_INTERVAL 3
 
-enum Operation { ADD, DEL };
+enum Operation { ADD, DEL, PENDING, NOTHING, UNKOWN };
 
 struct Message {
-    enum Type { JOIN, REQ, OK, NEWVIEW, UNKNOWN } type;
-    int request_id;
+    enum Type { JOIN, REQ, OK, NEWVIEW, NEWLEADER, UNKNOWN } type;
+    int req_id;
     int view_id;
     int peer_id;
     int sender_id;
@@ -23,7 +23,7 @@ struct Message {
 };
 
 struct PendingOperation {
-    int request_id;
+    int req_id;
     int view_id;
     int peer_id;
     Operation type;
@@ -31,7 +31,7 @@ struct PendingOperation {
 
 extern int leader_id;
 extern int view_id;
-extern int request_id;
+extern int req_id;
 extern std::vector<int> memb_list;
 extern std::map<std::pair<int, int>, int> oks_recieved;
 extern std::map<std::pair<int, int>, PendingOperation> pending_operations;

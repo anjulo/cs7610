@@ -5,7 +5,7 @@
 
 int leader_id = 1;
 int view_id = 1;
-int request_id = 1;
+int req_id = 1;
 std::vector<int> memb_list;
 std::map<std::pair<int, int>, int> oks_recieved;
 std::map<std::pair<int, int>, PendingOperation> pending_operations;
@@ -27,7 +27,7 @@ void printMessage(const Message& msg) {
         default: std::cerr << "UNKNOWN"; break;
     }
     
-    if (msg.request_id > 0) std::cerr << ", req_id: " << msg.request_id;
+    if (msg.req_id > 0) std::cerr << ", req_id: " << msg.req_id;
     if (msg.view_id > 0) std::cerr << ", view_id: " << msg.view_id;
     if (msg.peer_id > 0) std::cerr << ", peer_id: " << msg.peer_id;
     if (msg.sender_id > 0) std::cerr << ", sender_id: " << msg.sender_id;
@@ -60,7 +60,7 @@ void sendMessage(int sockfd, const Message& msg, int dest_id) {
     std::vector<int> buffer;
 
     buffer.push_back(static_cast<int>(msg.type));
-    buffer.push_back(msg.request_id);
+    buffer.push_back(msg.req_id);
     buffer.push_back(msg.view_id);
     buffer.push_back(msg.peer_id);
     buffer.push_back(msg.sender_id);
@@ -95,7 +95,7 @@ Message receiveMessage(int sockfd, int src_id) {
 
     Message msg;
     msg.type = static_cast<Message::Type>(buffer[index++]);
-    msg.request_id = buffer[index++];
+    msg.req_id = buffer[index++];
     msg.view_id = buffer[index++];
     msg.peer_id = buffer[index++];
     msg.sender_id = buffer[index++];
@@ -150,46 +150,46 @@ void handleJoinMessage(const Message& msg) {
         view_id++;
         memb_list.push_back(msg.sender_id);
         printNewView();
-        Message newview_msg{Message::NEWVIEW, request_id++, view_id, -1, -1, memb_list};
+        Message newview_msg{Message::NEWVIEW, req_id++, view_id, -1, -1, memb_list};
         sendMessage(peers[msg.sender_id].outgoing_sockfd, newview_msg, msg.sender_id);
         return;
     }
 
-    Message req_msg{Message::REQ, request_id, view_id, msg.sender_id, own_id, {}, Operation::ADD};
+    Message req_msg{Message::REQ, req_id, view_id, msg.sender_id, own_id, {}, Operation::ADD};
     for (int id : memb_list){
         if (id != own_id) {
             sendMessage(peers[id].outgoing_sockfd, req_msg, id);
         }
     }
-    pending_operations.insert({{request_id, view_id}, {request_id, view_id, msg.sender_id, Operation::ADD}});
-    oks_recieved[{request_id, view_id}] = 0;
-    request_id++;
+    pending_operations.insert({{req_id, view_id}, {req_id, view_id, msg.sender_id, Operation::ADD}});
+    oks_recieved[{req_id, view_id}] = 0;
+    req_id++;
 
 }
 
 void handleReqMessage(const Message& msg) {
     if (own_id == leader_id) return;
 
-    pending_operations.insert({{msg.request_id, msg.view_id}, {msg.request_id, msg.view_id, msg.peer_id, msg.operation}});
+    pending_operations.insert({{msg.req_id, msg.view_id}, {msg.req_id, msg.view_id, msg.peer_id, msg.operation}});
 
-    Message ok_msg{Message::OK, msg.request_id, msg.view_id};
+    Message ok_msg{Message::OK, msg.req_id, msg.view_id};
     sendMessage(peers[leader_id].outgoing_sockfd, ok_msg, leader_id);
 }
 
 void handleOkMessage(const Message& msg) {
     if (own_id != leader_id) return;
     
-    oks_recieved[{msg.request_id, msg.view_id}]++;
-    const auto &op = pending_operations[{msg.request_id, msg.view_id}];
+    oks_recieved[{msg.req_id, msg.view_id}]++;
+    const auto &op = pending_operations[{msg.req_id, msg.view_id}];
 
-    if (oks_recieved[{msg.request_id, msg.view_id}] >= memb_list.size() - 1) {
+    if (oks_recieved[{msg.req_id, msg.view_id}] >= memb_list.size() - 1) {
         view_id++;
         if (op.type == Operation::ADD){
             memb_list.push_back(op.peer_id);
         } 
         
         printNewView();
-        Message newview_msg{Message::NEWVIEW, -1, view_id, -1, -1, memb_list};
+        Message newview_msg{Message::NEWVIEW, msg.req_id, view_id, -1, -1, memb_list};
 
         for (int id : memb_list) {
             if (id != own_id)
@@ -197,8 +197,8 @@ void handleOkMessage(const Message& msg) {
         }
         
         // remove pending operation
-        oks_recieved.erase({msg.request_id, msg.view_id});
-        pending_operations.erase({msg.request_id, msg.view_id});
+        oks_recieved.erase({msg.req_id, msg.view_id});
+        pending_operations.erase({msg.req_id, msg.view_id});
         
     }
 
@@ -208,7 +208,7 @@ void handleNewViewMessage(const Message& msg) {
     view_id = msg.view_id;
     memb_list = msg.memb_list;
     printNewView();
-
+    pending_operations.erase({msg.req_id, msg.view_id-1});
 }
     
 
@@ -235,11 +235,11 @@ void handlePeerFailure(int failed_peer_id) {
         view_id++;
         printNewView();
     } else {
-        Message req_msg{Message::REQ, request_id, view_id, failed_peer_id, own_id, {}, Operation::DEL};
+        Message req_msg{Message::REQ, req_id, view_id, failed_peer_id, own_id, {}, Operation::DEL};
 
-        pending_operations.insert({{request_id, view_id}, {request_id, view_id, failed_peer_id, Operation::DEL}});
-        oks_recieved[{request_id, view_id}] = 0;
-        request_id++;
+        pending_operations.insert({{req_id, view_id}, {req_id, view_id, failed_peer_id, Operation::DEL}});
+        oks_recieved[{req_id, view_id}] = 0;
+        req_id++;
 
         for (int id : memb_list) {
             if (id != own_id && id != failed_peer_id)

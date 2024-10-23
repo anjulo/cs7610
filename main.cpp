@@ -54,7 +54,7 @@ int main(int argc, char* argv[]) {
 
     // crash if c defined
     if (c != 0){
-        std::this_thread::sleep_for(std::chrono::seconds(c * 2));
+        std::this_thread::sleep_for(std::chrono::seconds(c));
 
         should_exit.store(true);
 
