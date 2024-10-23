@@ -65,8 +65,6 @@ int main(int argc, char* argv[]) {
 
     joinGroup();
 
-    std::this_thread::sleep_for(std::chrono::seconds(15));
-
     threads.push_back(std::thread(checkFailures));
     threads.push_back(std::thread(sendHeartbeat, udp_sockfd));
 

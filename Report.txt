@@ -1,0 +1,18 @@
+The membership protocol I implemented is accoring to the instructions. Each peer starts by reading from the hostsfile.txt and 
+configuring its own and peers ids. As shown in the simple sketch in the submited picture(let's call it state diagram :), each peer sends a JOIN request 
+to the leader to join the membership group. The leader(at this point a member itself) then handles the request by sending either 
+a new view message(if it's the only members and the process ends here) or sending the REQ message to all peers in the group. The groups then save the 
+details of the message and send OK message. That's when the leader sends the NEWVIEW message and the processes update their membership list
+from the message itself. 
+
+For the case where the leader fails, the next peer with smalles id declares itself as the leader and sends NEWLEADER message to all
+the other peers. The other peers then also update the leader and send a NL_RESPONSE message with any pending operations left. The process
+continues as the case above where the new leader sends the REQ message if there are any pending operations. 
+
+The peers are connected with each other via a TCP connection for communicating with current leader and also UDP to check if other processes
+are alive. I have made some design decitions as the UDP message is not reliable and some peers maybe detected as dead by the leader even when they are alive, 
+thus creating a cascading failure events. One decision is to use a higher sleep time before process are intentinally crashed. On some runs, a process
+incorrectly is diagonised as dead by the leader and the leader is not sure which event to handle first. Using a longes sleep time, helps in making sure
+the leader handles an unexpected crashing of a program before handling the crash in the compose file. 
+
+
