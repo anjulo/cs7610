@@ -13,53 +13,6 @@ std::map<std::pair<int, int>, PendingOperation> pending_operations;
 std::unordered_map<int, std::chrono::steady_clock::time_point> last_heartbeat;
 std::mutex heartbeat_mutex;
 
-
-void printMessage(const Message& msg) {
-    std::cerr << "Message{";
-    
-    std::cerr << "type: ";
-
-    switch (msg.type) {
-        case Message::JOIN: std::cerr << "JOIN"; break;
-        case Message::REQ: std::cerr << "REQ"; break;
-        case Message::OK: std::cerr << "OK"; break;
-        case Message::NEWVIEW: std::cerr << "NEWVIEW"; break;
-        case Message::NEWLEADER: std::cerr << "NEWLEADER"; break;
-        case Message::NL_RESPONSE: std::cerr << "NL_RESPONSE"; break;
-        default: std::cerr << "UNKNOWN " << msg.type; break;
-    }
-    
-    if (msg.req_id > 0) std::cerr << ", req_id: " << msg.req_id;
-    if (msg.view_id > 0) std::cerr << ", view_id: " << msg.view_id;
-    if (msg.peer_id > 0) std::cerr << ", peer_id: " << msg.peer_id;
-    if (msg.sender_id > 0) std::cerr << ", sender_id: " << msg.sender_id;
-    
-    // Print Operation only for NEWVIEW messages
-    if (msg.type == Message::NEWVIEW) {
-        std::cerr << ", memb_list: [";
-        for (size_t i = 0; i < msg.memb_list.size(); ++i) {
-            if (i > 0) std::cerr << ",";
-            std::cerr << msg.memb_list[i];
-        }
-        std::cerr << "]";
-    }
-
-
-    // Print Operation only for REQ messages
-    if (msg.type == Message::REQ || msg.type == Message::NEWLEADER || msg.type == Message::NL_RESPONSE) {
-        std::cerr << ", op: ";
-        switch (msg.operation) {
-            case Operation::ADD: std::cerr << "ADD"; break;
-            case Operation::DEL: std::cerr << "DEL"; break;
-            case Operation::PENDING: std::cerr << "PENDING"; break;
-            case Operation::NOTHING: std::cerr << "NOTHING"; break;
-            default: std::cerr << "UNKNOWN "<< msg.operation ; break;
-        }
-    }
-    
-    std::cerr << "}" << std::endl;
-}
-
 void sendMessage(int sockfd, const Message& msg, int dest_id) {
     std::vector<int> buffer;
 
@@ -224,7 +177,6 @@ void handleNewLeaderMessage(const Message& msg) {
     } else {
         for (const auto& pending : pending_operations) {
             const auto& op = pending.second;
-            // std::cerr << "pending op type: " << op.type <<std::endl;
             Message nl_response{Message::NL_RESPONSE, msg.req_id, view_id, op.peer_id, own_id, {}, op.type};
             sendMessage(peers[msg.sender_id].outgoing_sockfd, nl_response, msg.sender_id);
         }
@@ -291,7 +243,6 @@ void handleLeaderFailure() {
             new_leader_id = id;
     }
     if (new_leader_id == own_id) {
-        std::cerr << "I'm the leader!" << std::endl;
         Message newleader_msg{Message::NEWLEADER, req_id++, view_id, -1, own_id, {}, Operation::PENDING};
         for (int id : memb_list) {
             if (id != own_id && id != leader_id.load())
