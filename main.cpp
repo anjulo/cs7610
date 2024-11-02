@@ -6,7 +6,6 @@ char value = '\0';
 int main(int argc, char* argv[]) {
     // process cli arguments
     std::string hostsfile;
-    // std::string v;
     int t = 0;
     for (int i = 1; i < argc; i += 2) {
         std::string arg(argv[i]);
@@ -17,6 +16,8 @@ int main(int argc, char* argv[]) {
         else if (arg == "-t")
             t = std::stoi(argv[i+1]);
     }
+
+    // std::cerr << "value: " << value << std::endl;
 
     // configure hosts and their ids
     readHostsFile(hostsfile);
@@ -39,14 +40,10 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // std::this_thread::sleep_for(std::chrono::seconds(10));
-    // for (const auto& pair : peers) {
-    //     const auto& peer = pair.second;
-    //     std:: cerr << pair.first << " " << (peer.hostname.empty() ? "N/A" : peer.hostname) << " " << peer.role << " " 
-    //                << peer.incoming_sockfd << " " << peer.outgoing_sockfd << std::endl;
-    // }
-    std::this_thread::sleep_for(std::chrono::seconds(10));
+    std::this_thread::sleep_for(std::chrono::seconds(INITIAL_DELAY));
 
+    if (own_id == 5)
+        std::this_thread::sleep_for(std::chrono::seconds(t));
     if (value != '\0')
         preparePaxos();
 

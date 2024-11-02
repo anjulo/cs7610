@@ -2,10 +2,12 @@
 
 int own_id;
 std::string own_hostname;
+std::string own_role;
 
 
 std::unordered_map<int, Peer> peers;
 std::vector<std::string> hosts;
+std::unordered_map<std::string, std::vector<int>> acceptors;
 
 
 void readHostsFile(const std::string& filename) {
@@ -19,18 +21,32 @@ void readHostsFile(const std::string& filename) {
         size_t delim = line.find(':');
         std::string hostname = line.substr(0, delim);
         hosts.push_back(hostname);
+        std::string roles_str = line.substr(delim + 1);
         if (hostname == own_hostname) {
             own_id = id;
+            if (roles_str == "proposer1" || roles_str == "proposer2")
+                own_role = roles_str;
             continue;
         }
-
-        std::string role = line.substr(delim + 1);
-        if (role == "proposer1")
-            peers[id] = {hostname, Role::Proposer, -1, -1};
-        else if (role == "acceptor1")
-            peers[id] = {hostname, Role::Acceptor, -1, -1};
-        else if (role == "learner1")
-            peers[id] = {hostname, Role::Learner, -1, -1};
+        
+        int pos = 0;
+        std::string role;
+        while ((pos = roles_str.find(',')) != std::string::npos) {
+            role = roles_str.substr(0, pos);
+            if (role == "acceptor1")
+                acceptors["proposer1"].push_back(id);
+            else if (role == "acceptor2")
+                acceptors["proposer2"].push_back(id);
+            roles_str.erase(0, pos + 1);
+        }
+        // Handle last or only role
+        if (!roles_str.empty()) {
+            if (roles_str == "acceptor1")
+                acceptors["proposer1"].push_back(id);
+            else if (roles_str == "acceptor2")
+                acceptors["proposer2"].push_back(id);
+        }
+        peers[id] = {hostname, Role::Acceptor, -1, -1};
     }
 }
 

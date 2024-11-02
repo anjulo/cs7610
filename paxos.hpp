@@ -27,7 +27,7 @@ struct Message {
 void preparePaxos();
 
 void receivePaxosMessage(int sockfd, int sender_id);
-void sendPaxosMessage(int sockfd, Message &msg);
+void sendPaxosMessage(int receiver_id, Message &msg);
 void handlePaxosMessage(int sender_id, Message &msg);
 
 // void chosenNotify();

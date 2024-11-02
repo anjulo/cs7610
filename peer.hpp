@@ -26,7 +26,7 @@
 enum Role { Proposer, Acceptor, Learner };
 
 extern int own_id;
-extern Role own_role;
+extern std::string own_role;
 
 struct Peer {
     std::string hostname;
@@ -37,6 +37,7 @@ struct Peer {
 
 extern std::unordered_map<int, Peer> peers;
 extern std::vector<std::string> hosts;
+extern std::unordered_map<std::string, std::vector<int>> acceptors;
 
 void readHostsFile(const std::string& filename);
 
