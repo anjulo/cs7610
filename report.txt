@@ -12,4 +12,4 @@ Some design decisions are made and shape the system's behavior and limitations.
 However, I beleive from usage standpoint, the implementation is functionally complete as it's not for use in production environment. 
 
 
-The state diagram can't be found in the file named paxos_SD.png submitted along with this report. 
+The state diagram can be found in the file named paxos_SD.png submitted along with this report. 
