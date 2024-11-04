@@ -18,10 +18,10 @@ void readHostsFile(const std::string& filename) {
     int id = 0;
     while (std::getline(file, line)) {
         id++;
-        size_t delim = line.find(':');
-        std::string hostname = line.substr(0, delim);
+        size_t colon = line.find(':');
+        std::string hostname = line.substr(0, colon);
         hosts.push_back(hostname);
-        std::string roles_str = line.substr(delim + 1);
+        std::string roles_str = line.substr(colon + 1);
         if (hostname == own_hostname) {
             own_id = id;
             if (roles_str == "proposer1" || roles_str == "proposer2")
@@ -46,7 +46,7 @@ void readHostsFile(const std::string& filename) {
             else if (roles_str == "acceptor2")
                 acceptors["proposer2"].push_back(id);
         }
-        peers[id] = {hostname, Role::Acceptor, -1, -1};
+        peers[id] = {hostname, -1, -1};
     }
 }
 

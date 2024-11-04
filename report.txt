@@ -1,13 +1,12 @@
 The provided Paxos consensus algorithm implementation presents a distributed system, utilizing a TCP-based communication for  reliable message passing between peers. 
-The architecture assigns each node a unique identifier and supports multiple roles (Proposer, Acceptor, Learner) through a flexible design that stores peer information 
-in an unordered map. The system maintains both incoming and outgoing tcp sockets for each peer, with message handling implemented using a dedicated listener thread, 
+The architecture assigns each peer a unique identifier maintains both incoming and outgoing tcp sockets for each peer, with message handling implemented using a dedicated listener thread, 
 allowing for efficient non-blocking operations.
 
 The protocol implementation follows classic Paxos algorithm from the lecture, with an approach to proposal number generation that combines round numbers 
-and proposer IDs through bit manipulation. Messages contain only essential fields (message type, proposal number, and value). The majority-based consensus mechanism 
+and proposer IDs through bit manipulation. Messages contain three fields (message type, proposal number, and value). The majority-based consensus mechanism 
 requires acknowledgment from more than half of the peers, while state transitions are managed through a series of message handlers.
 
-Some critical design choices are made and shape the system's behavior and limitations. 
+Some design decisions are made and shape the system's behavior and limitations. 
     1. The four-bit constraint on round numbers and peer ID's creates a potential scalability bottleneck
     2. The lack of persistent storage for critical state information makes the system vulnerable to data loss during failures.
 However, I beleive from usage standpoint, the implementation is functionally complete as it's not for use in production environment. 

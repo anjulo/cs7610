@@ -22,15 +22,11 @@
 #define BACKLOG 5
 
 
-
-enum Role { Proposer, Acceptor, Learner };
-
 extern int own_id;
 extern std::string own_role;
 
 struct Peer {
     std::string hostname;
-    Role role;
     int incoming_sockfd;
     int outgoing_sockfd;
 };
