@@ -39,7 +39,7 @@ void readHostsFile(const std::string& filename) {
                 acceptors["proposer2"].push_back(id);
             roles_str.erase(0, pos + 1);
         }
-        // Handle last or only role
+        // last role
         if (!roles_str.empty()) {
             if (roles_str == "acceptor1")
                 acceptors["proposer1"].push_back(id);

@@ -17,8 +17,6 @@ int main(int argc, char* argv[]) {
             t = std::stoi(argv[i+1]);
     }
 
-    // std::cerr << "value: " << value << std::endl;
-
     // configure hosts and their ids
     readHostsFile(hostsfile);
 
@@ -26,7 +24,7 @@ int main(int argc, char* argv[]) {
     int tcp_sockfd = setupSocketTCP();
     std::thread listenerThread(receiveAllMessages, tcp_sockfd);
 
-    // initial delay to allow all processes start
+    // delay to allow all processes start
     std::this_thread::sleep_for(std::chrono::seconds(INITIAL_DELAY));
 
     // connect to other peers TCP
@@ -40,6 +38,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // delay to allow peers connect via tcp
     std::this_thread::sleep_for(std::chrono::seconds(INITIAL_DELAY));
 
     if (own_id == 5)

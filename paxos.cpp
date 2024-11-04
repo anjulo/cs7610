@@ -16,17 +16,17 @@ char chosen_value = '\0';
 void printMessage(Message &msg, int id, int action_flag) {
     std::string mgs_type;
     switch (msg.type) {
-        case MessageType::Prepare: mgs_type = "prepare"; break;
-        case MessageType::PrepareAck: mgs_type = "prepare_ack"; break;
-        case MessageType::Accept: mgs_type = "accept"; break;
-        case MessageType::AcceptAck: mgs_type = "accept_ack"; break;
-        case MessageType::Chose: mgs_type = "chose"; break;
+        case MessageType::Prepare: mgs_type = "\"prepare\""; break;
+        case MessageType::PrepareAck: mgs_type = "\"prepare_ack\""; break;
+        case MessageType::Accept: mgs_type = "\"accept\""; break;
+        case MessageType::AcceptAck: mgs_type = "\"accept_ack\""; break;
+        case MessageType::Chose: mgs_type = "\"chose\""; break;
     }
     std::string action_type;
     switch (action_flag) {
-        case 0: action_type = "sent"; break;
-        case 1: action_type = "received"; break;
-        case 2: action_type = "chose"; break;
+        case 0: action_type = "\"sent\""; break;
+        case 1: action_type = "\"received\""; break;
+        case 2: action_type = "\"chose\""; break;
     }
     std::cerr << "{\"peer_id\": " << id << ", \"action\": " << action_type
               << ", \"message_type\": " << mgs_type; 
@@ -47,7 +47,7 @@ void receivePaxosMessage(int sockfd, int sender_id) {
     else if (bytes_received < sizeof(msg))
         std:: cerr << "recv: " << "didn't receive full message";
     
-    // printMessage(msg, sender_id, 1);
+    printMessage(msg, sender_id, 1);
     handlePaxosMessage(sender_id, msg);
 }
 
@@ -99,13 +99,8 @@ void handlePrepareAck(int sender_id, Message &msg){
     if (prepare_acks == hosts.size() / 2 + 1) {
         Message accept_msg{MessageType::Accept, n, value};
 
-        sendPaxosMessage(3, accept_msg);
-        if (own_id == 1)
-            std::this_thread::sleep_for(std::chrono::seconds(20));
-
         for (int acceptor_id : acceptors[own_role])
-            if(acceptor_id != 3)
-                sendPaxosMessage(acceptor_id, accept_msg);
+            sendPaxosMessage(acceptor_id, accept_msg);
         max_accepted_proposal = -1;
     }
 
